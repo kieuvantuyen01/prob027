@@ -1,0 +1,469 @@
+\documentclass[11pt,a4paper]{article}
+
+%% ── Packages ─────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\usetikzlibrary{matrix,positioning,arrows.meta}
+
+%% ── Theorem-like environments ────────────────────────────────────────
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+
+%% ── Convenience macros ──────────────────────────────────────────────
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\N}{\mathbb{N}}
+\DeclareMathOperator{\modd}{mod}
+
+%% ── Title ───────────────────────────────────────────────────────────
+\title{\textbf{The Alien Tiles Problem}\\[4pt]
+       \large CSPLib Problem 027 --- Problem Description,\\
+       ILP and SAT Models, and Datasets}
+\author{}
+\date{\today}
+
+%% =====================================================================
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The \emph{Alien Tiles} puzzle is a combinatorial puzzle played on a
+square grid of coloured tiles.  A click on any tile rotates the colour
+of that tile and every other tile sharing its row or column.  This
+document gives a formal description of the problem (CSPLib
+prob027~\cite{csplib027}), works through a concrete example, states the
+key constraints, and formulates the problem as both an Integer Linear
+Program (ILP) and a Boolean Satisfiability (SAT) instance.  Benchmark
+datasets are described and cited.
+\end{abstract}
+
+\tableofcontents
+\bigskip
+
+%% =====================================================================
+\section{Introduction}\label{sec:intro}
+
+The Alien Tiles puzzle was originally available for play at
+\url{http://www.alientiles.com}~\cite{gent2000symmetry}.  It was listed
+as Problem~027 in \emph{CSPLib}, a library of test problems for
+constraint solvers~\cite{csplib027}.  The puzzle belongs to the broader
+family of ``Lights Out'' games and is closely related to problems in
+coding theory over finite
+fields~\cite{chlond2006alien,gent2000symmetry}.
+
+The central combinatorial question is: \emph{given an $N\times N$ grid
+with $c$ colours and a goal state, what is the minimum number of clicks
+required to reach that state from the all-zero start state?}  A harder
+meta-question asks for the \emph{hardest} solvable instance, i.e., the
+goal state whose minimum-click solution is largest.
+
+%% =====================================================================
+\section{Problem Description}\label{sec:description}
+
+\begin{definition}[Alien Tiles Puzzle]\label{def:puzzle}
+An instance of the Alien Tiles puzzle is specified by a triple
+$(N, c, T)$ where
+\begin{itemize}[nosep]
+  \item $N \in \N$ is the grid size (the grid has $N\times N$ cells),
+  \item $c \in \N,\; c \ge 2$ is the number of colours (equivalently,
+        the modulus), and
+  \item $T \in \Z_c^{N\times N}$ is the \emph{target} (goal) state,
+        where $\Z_c = \{0,1,\dots,c-1\}$.
+\end{itemize}
+The \emph{start state} is the all-zero matrix $S = \mathbf{0}$.
+\end{definition}
+
+\paragraph{Click mechanics.}
+A \emph{click} on cell $(i,j)$ adds~$1$ (modulo~$c$) to the colour of
+every cell that shares row~$i$ or column~$j$ with $(i,j)$.  Formally,
+clicking $(i,j)$ modifies the state matrix $G$ as follows:
+\[
+  G'_{r,k} =
+  \begin{cases}
+    (G_{r,k} + 1) \bmod c & \text{if } r = i \text{ or } k = j,\\[2pt]
+    G_{r,k} & \text{otherwise}.
+  \end{cases}
+\]
+Because clicks are \emph{commutative} (the order does not matter), a
+solution is fully characterised by a \emph{click matrix}
+$X = (x_{i,j}) \in \Z_c^{N\times N}$, where $x_{i,j}$ is the number
+of times cell $(i,j)$ is clicked.  Any $c$ clicks on the same cell
+produce no net effect, so $0 \le x_{i,j} \le c-1$.
+
+\paragraph{Effect equation.}
+After applying all clicks, the resulting colour of cell $(r,k)$ is
+\begin{equation}\label{eq:effect}
+  G_{r,k} = \left(\sum_{j=1}^{N} x_{r,j}
+             + \sum_{i=1}^{N} x_{i,k}
+             - x_{r,k}\right) \bmod c.
+\end{equation}
+Note that $x_{r,k}$ is counted twice (once in row~$r$, once in
+column~$k$), hence the subtraction of $x_{r,k}$.
+
+\paragraph{Feasibility.}
+A click matrix $X$ is a \emph{solution} if and only if
+\begin{equation}\label{eq:feasibility}
+  \forall\, r,k \in \{1,\dots,N\}:\quad
+  \left(\sum_{j=1}^{N} x_{r,j} + \sum_{i=1}^{N} x_{i,k}
+        - x_{r,k}\right) \bmod c = t_{r,k},
+\end{equation}
+where $t_{r,k}$ is the target colour of cell $(r,k)$.
+
+%% =====================================================================
+\section{Illustrative Example}\label{sec:example}
+
+\begin{example}[$4\times 4$ grid, $c=3$ colours]\label{ex:4x4}
+Consider $N=4$ and $c=3$ (colours 0, 1, 2 cycling as
+$\text{Red}\to\text{Green}\to\text{Blue}\to\text{Red}$).
+
+\medskip
+\noindent\textbf{Step 1: A single click.}\;
+Suppose we click cell $(1,1)$ once.  Every cell in row~1 and column~1
+has its colour increased by~1 (mod~3).  The resulting state is:
+
+\begin{center}
+\begin{tikzpicture}[
+    cell/.style={minimum size=8mm, draw, thick, font=\small},
+    highlight/.style={cell, fill=green!30},
+    normal/.style={cell, fill=gray!10},
+  ]
+  \matrix (m) [matrix of nodes, nodes in empty cells,
+    row sep=-\pgflinewidth, column sep=-\pgflinewidth]{
+    |[highlight]| 1 & |[highlight]| 1 & |[highlight]| 1 & |[highlight]| 1 \\
+    |[highlight]| 1 & |[normal]|   0 & |[normal]|   0 & |[normal]|   0 \\
+    |[highlight]| 1 & |[normal]|   0 & |[normal]|   0 & |[normal]|   0 \\
+    |[highlight]| 1 & |[normal]|   0 & |[normal]|   0 & |[normal]|   0 \\
+  };
+  \node[above=2mm of m-1-1] {\footnotesize $j{=}1$};
+  \node[above=2mm of m-1-2] {\footnotesize $j{=}2$};
+  \node[above=2mm of m-1-3] {\footnotesize $j{=}3$};
+  \node[above=2mm of m-1-4] {\footnotesize $j{=}4$};
+  \node[left=2mm of m-1-1]  {\footnotesize $i{=}1$};
+  \node[left=2mm of m-2-1]  {\footnotesize $i{=}2$};
+  \node[left=2mm of m-3-1]  {\footnotesize $i{=}3$};
+  \node[left=2mm of m-4-1]  {\footnotesize $i{=}4$};
+\end{tikzpicture}
+\end{center}
+
+Cell $(1,1)$ has value~$1$ because it lies in both row~1 and column~1,
+but the click only adds~1 once (not twice) to the clicked cell itself.
+
+\medskip
+\noindent\textbf{Step 2: Equivalence of solutions.}\;
+Consider clicking once in \emph{every} cell of row~1 and twice in every
+cell of row~2.  For cells in rows~3 and~4, each receives $4 \times 1 +
+4 \times 2 = 12$ column-clicks from rows~1 and~2.  Since
+$12 \bmod 3 = 0$, these cells are unchanged.  For cells in rows~1
+and~2, the row-clicks further accumulate to multiples of~3.  The net
+effect on the entire grid is zero---this is a \emph{null click pattern}.
+Any solution $X$ can be replaced by $X' = X + \Delta$ (mod~$c$) where
+$\Delta$ is such a null pattern, yielding an equivalent solution.
+
+\medskip
+\noindent\textbf{Step 3: Hardest instance.}\;
+Among all solvable target states, we seek the one whose
+\emph{minimum-click} representative (over all equivalent solutions) has
+the \emph{largest} total click count.  For $N=4,\, c=3$, the answer is
+$10$~clicks, and there are $19$ essentially different hardest instances
+(up to symmetry)~\cite{gent2000symmetry}.
+\end{example}
+
+%% =====================================================================
+\section{Key Constraints}\label{sec:constraints}
+
+The structure of the Alien Tiles problem gives rise to several important
+constraints and properties:
+
+\begin{enumerate}[label=\textbf{C\arabic*.},leftmargin=*]
+  \item \textbf{Commutativity.}\;
+    The final state depends only on the \emph{multiset} of clicks, not
+    their order.  Hence a solution is a matrix
+    $X \in \Z_c^{N\times N}$, not a sequence.
+
+  \item \textbf{Modular arithmetic.}\;
+    All computations are performed in $\Z_c$.  In particular, $c$
+    clicks on any single cell produce no net effect, so
+    $x_{i,j} \in \{0, 1, \dots, c-1\}$.
+
+  \item \textbf{Effect equation.}\;
+    For each cell $(r,k)$, the constraint
+    \[
+      \Bigl(\sum_{j=1}^{N} x_{r,j}
+            + \sum_{i=1}^{N} x_{i,k}
+            - x_{r,k}\Bigr) \bmod c = t_{r,k}
+    \]
+    must hold.  This yields $N^2$ modular linear equations in $N^2$
+    unknowns.
+
+  \item \textbf{Equivalence classes.}\;
+    Two click matrices $X$ and $X'$ are \emph{equivalent} if they
+    produce the same goal state.  Null patterns (click matrices that
+    produce the all-zero effect) form a subgroup of $\Z_c^{N\times N}$.
+
+  \item \textbf{Symmetry.}\;
+    The problem exhibits a symmetry group of order $N!\times N!\times 2$
+    arising from:
+    \begin{itemize}[nosep]
+      \item $N!$ row permutations,
+      \item $N!$ column permutations, and
+      \item reflection in the main diagonal (transposition).
+    \end{itemize}
+    These symmetries can be exploited through symmetry-breaking
+    constraints to drastically reduce the search
+    space~\cite{gent2000symmetry}.
+
+  \item \textbf{Objective (hardest-puzzle variant).}\;
+    Among all feasible click matrices for all solvable targets, find the
+    target whose minimum-click representative maximises
+    $\sum_{i,j} x_{i,j}$.
+\end{enumerate}
+
+%% =====================================================================
+\section{Integer Linear Programming (ILP) Model}\label{sec:ilp}
+
+We present the ILP formulation following
+Chlond~\cite{chlond2006alien}.
+
+\subsection{Decision variables}
+
+\begin{itemize}[nosep]
+  \item $x_{i,j} \in \{0, 1, \dots, c-1\}$ \quad for
+        $i,j \in \{1,\dots,N\}$: number of clicks on cell $(i,j)$.
+  \item $q_{r,k} \in \Z_{\ge 0}$: auxiliary integer variable used to
+        linearise the modulo constraint for cell $(r,k)$.
+\end{itemize}
+
+\subsection{Constraints}
+
+The modular constraint~\eqref{eq:feasibility} is linearised by
+introducing the auxiliary variables $q_{r,k}$:
+\begin{equation}\label{eq:ilp-constraint}
+  \sum_{j=1}^{N} x_{r,j} + \sum_{i=1}^{N} x_{i,k} - x_{r,k}
+  - c\, q_{r,k} = t_{r,k},
+  \qquad \forall\, r,k \in \{1,\dots,N\}.
+\end{equation}
+
+\noindent\textbf{Variable bounds:}
+\begin{align}
+  0 &\le x_{i,j} \le c - 1,
+      &\forall\, i,j \in \{1,\dots,N\}, \label{eq:x-bounds}\\[4pt]
+  0 &\le q_{r,k} \le \left\lfloor
+        \frac{(2N-1)(c-1)}{c} \right\rfloor,
+      &\forall\, r,k \in \{1,\dots,N\}. \label{eq:q-bounds}
+\end{align}
+The upper bound on $q_{r,k}$ follows from the fact that
+$\sum_j x_{r,j} + \sum_i x_{i,k} - x_{r,k} \le (2N-1)(c-1)$.
+
+\subsection{Objective function}
+
+\paragraph{Variant 1: Solving a given target.}
+If the goal is simply to find \emph{any} feasible click matrix for a
+given target~$T$, no objective is needed (feasibility problem).
+
+\paragraph{Variant 2: Minimum total clicks for a given target.}
+\begin{equation}\label{eq:obj-min}
+  \min \sum_{i=1}^{N}\sum_{j=1}^{N} x_{i,j}
+  \quad \text{subject to } \eqref{eq:ilp-constraint}\text{--}\eqref{eq:q-bounds}.
+\end{equation}
+
+\paragraph{Variant 3: Hardest puzzle (max--min).}
+This requires a bi-level formulation.  One approach is to maximise
+over all solvable targets~$T$:
+\begin{equation}\label{eq:obj-maxmin}
+  \max_{T}\; \min_{X}\; \sum_{i,j} x_{i,j}
+  \quad \text{s.t.\ } X \text{ solves } T.
+\end{equation}
+Gent et al.\ solved this via constraint programming with symmetry
+breaking~\cite{gent2000symmetry}; Chlond tackled it with
+ILP~\cite{chlond2006alien}.
+
+\subsection{Symmetry-breaking constraints (optional)}
+
+To exploit the $N!\times N!\times 2$ symmetries, one can add:
+\begin{align}
+  \sum_{j=1}^{N} x_{1,j} &\le \sum_{j=1}^{N} x_{2,j}
+                          \le \cdots
+                          \le \sum_{j=1}^{N} x_{N,j},
+                          \label{eq:row-sym}\\[4pt]
+  \sum_{i=1}^{N} x_{i,1} &\le \sum_{i=1}^{N} x_{i,2}
+                          \le \cdots
+                          \le \sum_{i=1}^{N} x_{i,N},
+                          \label{eq:col-sym}\\[4pt]
+  x_{1,2} &\le x_{2,1}. \label{eq:diag-sym}
+\end{align}
+These break row permutation, column permutation, and diagonal
+reflection symmetries, respectively~\cite{gent2000symmetry}.
+
+%% =====================================================================
+\section{SAT / Pseudo-Boolean Model}\label{sec:sat}
+
+We now encode the Alien Tiles problem as a propositional satisfiability
+(SAT) instance.
+
+\subsection{Binary encoding of variables}
+
+Each click variable $x_{i,j}$ takes values in $\{0,\ldots,c-1\}$ and
+is encoded using $b = \lceil\log_2 c\rceil$ Boolean variables:
+\[
+  x_{i,j} = \sum_{\ell=0}^{b-1} 2^\ell\, p_{i,j,\ell},
+  \qquad p_{i,j,\ell} \in \{0,1\}.
+\]
+If $c$ is not a power of~2, additional \emph{at-most} clauses exclude
+the unused values $c, c+1, \ldots, 2^b - 1$.
+
+\subsection{Linearised sum variables}
+
+Define the sum for each cell $(r,k)$ as:
+\[
+  \sigma_{r,k} = \sum_{j=1}^{N} x_{r,j}
+                 + \sum_{i=1}^{N} x_{i,k}
+                 - x_{r,k}.
+\]
+This sum can range from $0$ to $(2N-1)(c-1)$.  Represent $\sigma_{r,k}$
+in binary using $B = \lceil\log_2((2N-1)(c-1)+1)\rceil$ bits.  The
+addition can be implemented via a \emph{binary adder network} (e.g.,
+ripple-carry or parallel-prefix adders) translated into CNF clauses
+using the Tseitin transformation.
+
+\subsection{Modulo constraint in CNF}
+
+The constraint $\sigma_{r,k} \bmod c = t_{r,k}$ can be encoded as:
+\[
+  \sigma_{r,k} - c\,q_{r,k} = t_{r,k},
+\]
+where $q_{r,k}$ is an auxiliary integer variable encoded in binary.
+Alternatively, one can enumerate all valid assignments:
+\[
+  \sigma_{r,k} \in \{t_{r,k},\; t_{r,k} + c,\; t_{r,k} + 2c,\;
+                     \dots\},
+\]
+and encode this as a disjunction of equality constraints, each expanded
+into CNF.
+
+\subsection{Objective for optimisation}
+
+For optimisation variants, we solve a sequence of SAT instances (or use
+\emph{MaxSAT} / \emph{pseudo-Boolean optimisation}):
+
+\begin{itemize}[nosep]
+  \item \textbf{Minimisation (Variant~2):}\;
+    Add the pseudo-Boolean constraint
+    $\sum_{i,j}\sum_\ell 2^\ell\, p_{i,j,\ell} \le K$ and perform
+    binary search on $K$; or use a MaxSAT solver on soft clauses
+    penalising each $p_{i,j,\ell}$.
+
+  \item \textbf{Max--min (Variant~3):}\;
+    The target $T$ becomes part of the encoding (introduce Boolean
+    variables for $t_{r,k}$), and the objective is maximised over
+    feasible $(X,T)$ pairs.  A practical approach iterates: fix a
+    candidate $K$, assert $\sum_{i,j} x_{i,j} \ge K$, and check
+    satisfiability; increase $K$ until unsatisfiable.
+\end{itemize}
+
+\subsection{Complexity summary}
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Component} & \textbf{Boolean variables} & \textbf{Clauses} \\
+\midrule
+Click variables $p_{i,j,\ell}$
+  & $N^2 \lceil\log_2 c\rceil$ & --- \\
+Sum auxiliary bits
+  & $O(N^2 \log(Nc))$ & $O(N^3 \log(Nc))$ \\
+Modulo constraints
+  & $O(N^2 \log(Nc))$ & $O(N^2 \cdot Nc / c)$ \\
+Value exclusion (if $c \ne 2^b$)
+  & --- & $O(N^2)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% =====================================================================
+\section{Datasets and Benchmarks}\label{sec:dataset}
+
+\subsection{CSPLib instances}
+
+The canonical dataset for the Alien Tiles problem is hosted at the
+CSPLib repository~\cite{csplib027}:
+\begin{center}
+\url{https://www.csplib.org/Problems/prob027/}
+\end{center}
+
+CSPLib provides:
+\begin{itemize}[nosep]
+  \item An \textsc{Essence} model for single-pass solving
+        (\texttt{prob027-alientiles-singlepass.essence}).
+  \item A multi-pass model using equivalence to determine minimality
+        (\texttt{prob027-alientiles-multipass.zip}), based on the method
+        of Gent, Linton, and Smith~\cite{gent2000symmetry}.
+  \item Known results: for $N=4,\, c=3$, the hardest instance requires
+        $10$ clicks, and there are $19$ distinct hardest instances up to
+        symmetry~\cite{gent2000symmetry}.
+\end{itemize}
+
+\subsection{Instance parameters}
+
+\Cref{tab:instances} summarises selected instance families.
+
+\begin{table}[ht]
+\centering
+\caption{Selected instance families for the Alien Tiles problem.}
+\label{tab:instances}
+\begin{tabular}{@{}ccccl@{}}
+\toprule
+$N$ & $c$ & \# Variables & Known optimum & Source \\
+\midrule
+4 & 3 & 16 & 10 clicks & Gent et al.~\cite{gent2000symmetry} \\
+$N$ & $N{-}1$ & $N^2$ & open & CSPLib~\cite{csplib027} \\
+7 & 4 & 49 & open & Chlond~\cite{chlond2006alien} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Generating test instances.}
+For $N\times N$ with $c = N-1$ colours, clicking 1~time in each cell of
+row~1 and $(N-2)$~times in each cell of row~2 generates a null pattern,
+providing a convenient test instance family~\cite{csplib027}.
+
+\subsection{Computational results from the literature}
+
+Gent, Linton, and Smith~\cite{gent2000symmetry} solved the $N{=}4,\,
+c{=}3$ instance using ILOG Solver with GAP-generated symmetry-breaking:
+\begin{itemize}[nosep]
+  \item Without symmetry breaking: 866 fails, 31\,s to find optimum;
+        57\,664 fails, 2\,324\,s to prove optimality.
+  \item With symmetry breaking: 116 fails, 18.6\,s;
+        499 fails, 56.6\,s to prove optimality.
+\end{itemize}
+
+Chlond~\cite{chlond2006alien} formulated the $7\times 7,\, c{=}4$
+puzzle as an ILP and noted that transforming the entire grid to a single
+colour is particularly challenging, even with symmetry elimination.
+
+%% =====================================================================
+\section{Conclusion}\label{sec:conclusion}
+
+The Alien Tiles problem is a rich combinatorial puzzle with connections
+to coding theory, linear algebra over finite fields, and symmetry
+exploitation.  We have presented formal ILP and SAT encodings that can
+be used to solve instances and to search for the hardest puzzles.  The
+CSPLib repository provides standard models and benchmarks for further
+research.
+
+%% =====================================================================
+\bibliographystyle{plain}
+\bibliography{references/references}
+
+\end{document}
