@@ -20,12 +20,16 @@ Encoding
 
 Usage
 -----
-    python3 sat_variant1.py --N 4 --c 3
+    python3 sat_variant1.py --input data/4x4_c3_easy.json
+    python3 sat_variant1.py --input-dir data/
     python3 sat_variant1.py --N 4 --c 3 --target "1,0,2,1;0,1,0,2;2,0,1,0;1,2,0,1"
-    python3 sat_variant1.py --N 3 --c 2 --target "1,1,1;1,1,1;1,1,1"
+    python3 sat_variant1.py --examples
 """
 
 import argparse
+import glob
+import json
+import os
 import sys
 import time
 from pysat.solvers import Glucose4
@@ -266,8 +270,26 @@ def example_instances() -> list[dict]:
 
 
 # =====================================================================
-#  CLI
+#  Instance I/O
 # =====================================================================
+
+def load_instance(filepath: str) -> dict:
+    """Load an instance from a JSON file."""
+    with open(filepath) as f:
+        data = json.load(f)
+    name = data.get("name", os.path.basename(filepath))
+    return {"name": name, "N": data["N"], "c": data["c"],
+            "target": data["target"]}
+
+
+def load_instances_from_dir(dirpath: str) -> list[dict]:
+    """Load all .json instance files from a directory."""
+    files = sorted(glob.glob(os.path.join(dirpath, "*.json")))
+    if not files:
+        print(f"No .json files found in {dirpath}")
+        sys.exit(1)
+    return [load_instance(f) for f in files]
+
 
 def parse_target(s: str, N: int, c: int) -> list[list[int]]:
     """Parse target string "v,v,...;v,v,...;..." into N×N int matrix."""
@@ -286,9 +308,46 @@ def parse_target(s: str, N: int, c: int) -> list[list[int]]:
     return matrix
 
 
+# =====================================================================
+#  CLI
+# =====================================================================
+
+def solve_instance(inst: dict):
+    """Solve a single instance and print results."""
+    N, c, target = inst["N"], inst["c"], inst["target"]
+    print("=" * 60)
+    print(f"Instance: {inst['name']}")
+    print(f"  N={N}, c={c}")
+    print_matrix("  Target T", target)
+
+    sat = AlienTilesSAT(N, c, target)
+    solution = sat.solve()
+
+    print(f"\n  Encoding: {sat.stats['vars']} variables, "
+          f"{sat.stats['clauses']} clauses")
+    print(f"  Encode time: {sat.stats['time_encode']:.4f}s")
+    print(f"  Solve time:  {sat.stats['time_solve']:.4f}s")
+
+    if solution is None:
+        print("\n  Result: UNSATISFIABLE — no solution exists.")
+    else:
+        print_matrix("  Solution X (click matrix)", solution)
+        total = sum(sum(row) for row in solution)
+        print(f"\n  Total clicks: {total}")
+
+        ok = verify_solution(N, c, target, solution)
+        print(f"  Verification: {'✓ PASSED' if ok else '✗ FAILED'}")
+
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="SAT solver for Alien Tiles (Variant 1: Feasibility)")
+    parser.add_argument("--input", type=str, default=None,
+                        help="Path to a JSON instance file")
+    parser.add_argument("--input-dir", type=str, default=None,
+                        help="Path to a directory of JSON instance files")
     parser.add_argument("--N", type=int, help="Grid size (N×N)")
     parser.add_argument("--c", type=int, help="Number of colours")
     parser.add_argument("--target", type=str, default=None,
@@ -297,46 +356,24 @@ def main():
                         help="Run built-in example instances")
     args = parser.parse_args()
 
-    if args.examples or (args.N is None and args.c is None):
-        # Run built-in examples
+    # Determine instances
+    if args.input:
+        instances = [load_instance(args.input)]
+    elif args.input_dir:
+        instances = load_instances_from_dir(args.input_dir)
+    elif args.examples:
         instances = example_instances()
-    else:
-        if args.N is None or args.c is None:
-            parser.error("Both --N and --c are required")
-        if args.target is None:
-            parser.error("--target is required (or use --examples)")
+    elif args.N is not None and args.c is not None and args.target is not None:
         target = parse_target(args.target, args.N, args.c)
         instances = [{"name": f"User instance ({args.N}×{args.N}, c={args.c})",
                       "N": args.N, "c": args.c, "target": target}]
+    else:
+        parser.print_help()
+        sys.exit(1)
 
     # Solve each instance
     for inst in instances:
-        N, c, target = inst["N"], inst["c"], inst["target"]
-        print("=" * 60)
-        print(f"Instance: {inst['name']}")
-        print(f"  N={N}, c={c}")
-        print_matrix("  Target T", target)
-
-        sat = AlienTilesSAT(N, c, target)
-        solution = sat.solve()
-
-        print(f"\n  Encoding: {sat.stats['vars']} variables, "
-              f"{sat.stats['clauses']} clauses")
-        print(f"  Encode time: {sat.stats['time_encode']:.4f}s")
-        print(f"  Solve time:  {sat.stats['time_solve']:.4f}s")
-
-        if solution is None:
-            print("\n  Result: UNSATISFIABLE — no solution exists.")
-        else:
-            print_matrix("  Solution X (click matrix)", solution)
-            total = sum(sum(row) for row in solution)
-            print(f"\n  Total clicks: {total}")
-
-            # Verify
-            ok = verify_solution(N, c, target, solution)
-            print(f"  Verification: {'✓ PASSED' if ok else '✗ FAILED'}")
-
-        print()
+        solve_instance(inst)
 
 
 if __name__ == "__main__":
