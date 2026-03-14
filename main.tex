@@ -351,26 +351,6 @@ Alternatively, one can enumerate all valid assignments:
 and encode this as a disjunction of equality constraints, each expanded
 into CNF.
 
-\subsection{Objective for optimisation}
-
-For optimisation variants, we solve a sequence of SAT instances (or use
-\emph{MaxSAT} / \emph{pseudo-Boolean optimisation}):
-
-\begin{itemize}[nosep]
-  \item \textbf{Minimisation (Variant~2):}\;
-    Add the pseudo-Boolean constraint
-    $\sum_{i,j}\sum_\ell 2^\ell\, p_{i,j,\ell} \le K$ and perform
-    binary search on $K$; or use a MaxSAT solver on soft clauses
-    penalising each $p_{i,j,\ell}$.
-
-  \item \textbf{Max--min (Variant~3):}\;
-    The target $T$ becomes part of the encoding (introduce Boolean
-    variables for $t_{r,k}$), and the objective is maximised over
-    feasible $(X,T)$ pairs.  A practical approach iterates: fix a
-    candidate $K$, assert $\sum_{i,j} x_{i,j} \ge K$, and check
-    satisfiability; increase $K$ until unsatisfiable.
-\end{itemize}
-
 \subsection{Complexity summary}
 
 \begin{center}
@@ -389,6 +369,228 @@ Value exclusion (if $c \ne 2^b$)
 \bottomrule
 \end{tabular}
 \end{center}
+
+%% =====================================================================
+\section{SAT-Based Optimisation Approaches}\label{sec:optim}
+
+The feasibility encoding of \Cref{sec:sat} determines whether a given
+target~$T$ is solvable.  For the \emph{minimisation} variant
+($\min \sum_{i,j} x_{i,j}$), we must couple the feasibility formula
+with an objective.  Three principal paradigms exist: non-incremental
+SAT, incremental SAT, and MaxSAT / pseudo-Boolean optimisation.
+
+\paragraph{Unary expansion of the objective.}
+To link the click values to a cardinality objective, we introduce
+\emph{unit-contribution literals}.  For each cell $(i,j)$ and each
+$v \in \{1,\dots,c{-}1\}$, define
+\begin{equation}\label{eq:unit}
+  u_{i,j,v} = 1 \;\Longleftrightarrow\; x_{i,j} \ge v.
+\end{equation}
+Then $\text{total}(X) = \sum_{i,j}\sum_{v=1}^{c-1} u_{i,j,v}$, and
+minimising total clicks becomes minimising the number of true
+$u$-literals.  The channelling between $u_{i,j,v}$ and the click
+variables $d_{i,j,w}$ (``$x_{i,j}=w$'') is:
+\[
+  u_{i,j,v} \;\Longleftrightarrow\;
+  \bigvee_{w=v}^{c-1} d_{i,j,w}.
+\]
+This yields $n = N^2(c{-}1)$ unit literals in total.
+
+% ---------------------------------------------------------------------
+\subsection{Non-incremental SAT (multiple independent calls)}%
+\label{sec:optim-noninc}
+
+A sequence of \emph{independent} SAT instances is solved, each with a
+different cardinality bound.  A fresh solver is created for every call,
+so learned clauses are \emph{not} reused.
+
+\subsubsection{Binary search}
+
+Search for the minimum $K$ such that $\mathcal{F} \wedge
+\textsc{AtMost}(\{u_{i,j,v}\}, K)$ is satisfiable, where
+$\mathcal{F}$ denotes the feasibility formula:
+
+\begin{algorithmic}[1]
+\State $\ell \gets 0$;\; $h \gets N^2(c-1)$;\;
+       $X^* \gets \textsc{None}$
+\While{$\ell \le h$}
+  \State $m \gets \lfloor (\ell+h)/2 \rfloor$
+  \State Build fresh CNF: $\mathcal{F}
+         \wedge \textsc{AtMost}(\{u\}, m)$
+  \If{\textsc{Sat}(\,)}
+    \State $X^* \gets \textsc{Extract}()$;\;
+           $h \gets m - 1$
+  \Else\; $\ell \gets m + 1$
+  \EndIf
+\EndWhile
+\State \Return $X^*$
+  \Comment{optimal in
+  $\lceil\log_2(N^2(c{-}1))\rceil$ SAT calls}
+\end{algorithmic}
+
+\medskip
+The \textsc{AtMost} constraint can be encoded via:
+\begin{itemize}[nosep]
+  \item \textbf{Sequential counter}~\cite{sinz2005towards}:
+    $O(n\!\cdot\! K)$ auxiliary variables and clauses; compact with
+    strong unit propagation.
+  \item \textbf{Totalizer}~\cite{bailleux2003efficient}:
+    $O(n\log n)$ variables, $O(n\log^2 n)$ clauses; often faster for
+    large~$n$.
+  \item \textbf{Cardinality networks}~\cite{asin2011cardinality}:
+    sorting-network based; balances formula size and propagation
+    strength.
+\end{itemize}
+
+\subsubsection{Linear search (top-down)}
+
+Find any feasible solution~$X$, record its total~$K$, then solve with
+bound~$K{-}1$, repeating until unsatisfiable.  This needs
+$K_{\text{first}} - K^* + 1$ calls in the worst case and is effective
+when a good initial solution is found early.
+
+% ---------------------------------------------------------------------
+\subsection{Incremental SAT}\label{sec:optim-inc}
+
+A \emph{single} solver instance is kept alive across iterations.
+Learned clauses are retained, making subsequent calls faster.
+
+\subsubsection{Assumption-based bound control}
+
+The cardinality encoding is built \emph{once}.  An \emph{incremental
+totalizer}~\cite{martins2014incremental} produces output literals
+$o_1, o_2, \dots, o_n$ where $o_k$ is true if and only if at least~$k$
+of the unit literals are true.  To assert ``at most~$K$'', the solver
+is called with the \emph{assumption} $\neg o_{K+1}$:
+
+\begin{algorithmic}[1]
+\State \textbf{solver} $\gets$
+       \textsc{IncrementalSolver}($\mathcal{F}$)
+\State Build totalizer on $\{u_{i,j,v}\}$
+       $\;\to\;$ outputs $o_1,\dots,o_n$
+\State Add totalizer clauses to \textbf{solver}
+\State $\ell \gets 0$;\; $h \gets n$;\;
+       $X^* \gets \textsc{None}$
+\While{$\ell \le h$}
+  \State $m \gets \lfloor(\ell+h)/2\rfloor$
+  \If{$\textbf{solver}.\textsc{Solve}(
+      \text{assumptions}=\{\neg o_{m+1}\})$}
+    \State $X^* \gets \textsc{Extract}()$;\;
+           $h \gets m - 1$
+  \Else\; $\ell \gets m + 1$
+  \EndIf
+\EndWhile
+\State \Return $X^*$
+\end{algorithmic}
+
+\medskip
+\noindent Key advantages over non-incremental search:
+\begin{itemize}[nosep]
+  \item The totalizer is built and added to the solver \emph{once}
+        (no re-encoding per call).
+  \item Learned clauses from earlier iterations remain valid and
+        accelerate later calls --- typically $2$--$10\times$ faster.
+  \item Changing the bound only modifies the \emph{assumptions}, not
+        the clause database.
+\end{itemize}
+
+% ---------------------------------------------------------------------
+\subsection{MaxSAT and pseudo-Boolean optimisation}%
+\label{sec:optim-maxsat}
+
+Instead of iterating over bounds externally, the objective is encoded
+\emph{inside} the formula and the solver handles optimisation
+internally.
+
+\subsubsection{Partial weighted MaxSAT}
+
+The formula is split into \emph{hard} clauses (must be satisfied) and
+\emph{soft} clauses (satisfy as many as possible):
+\begin{itemize}[nosep]
+  \item \textbf{Hard clauses:} all feasibility constraints
+        $\mathcal{F}$ (exactly-one, running-sum, target assertion).
+  \item \textbf{Soft clauses:} for each unit literal $u_{i,j,v}$, add
+        the unit clause $(\neg u_{i,j,v})$ with weight~$1$.
+\end{itemize}
+Minimising total clicks is equivalent to \emph{maximising} the number of
+satisfied soft clauses (i.e., maximising the literals $\neg u_{i,j,v}$
+that are true).
+
+Modern MaxSAT solvers employ several internal strategies:
+\begin{itemize}[nosep]
+  \item \textbf{Core-guided algorithms} (e.g., OLL~\cite{morgado2014iterative},
+        MSU3~\cite{martins2014open}):
+        extract unsatisfiable cores of soft clauses, add relaxation
+        variables, and iterate.  Particularly effective when the optimum
+        is far from the worst case.
+  \item \textbf{Linear SAT--UNSAT search:} internally equivalent to
+        \Cref{sec:optim-noninc} but with learned-clause reuse.
+  \item \textbf{Stratification:} partition soft clauses by weight and
+        solve layer by layer; useful for weighted instances.
+\end{itemize}
+
+\subsubsection{Pseudo-Boolean optimisation (PBO)}
+
+A PBO solver (e.g., RoundingSat) minimises a linear pseudo-Boolean
+objective directly:
+\begin{equation}\label{eq:pbo}
+  \min \sum_{i,j}\sum_{v=1}^{c-1} u_{i,j,v}
+  \qquad\text{subject to } \mathcal{F}.
+\end{equation}
+PBO solvers use the \emph{cutting-planes} proof system, which is
+strictly stronger than the resolution system underlying CDCL SAT
+solvers, and can therefore produce shorter proofs of
+optimality for certain structured instances.
+
+\subsubsection{Weighted variant (binary encoding)}
+
+If binary encoding is used for $x_{i,j}$ instead of one-hot, the
+objective is a \emph{weighted} sum
+$\text{total} = \sum_{i,j}\sum_{\ell=0}^{b-1} 2^\ell\, p_{i,j,\ell}$.
+Each bit contributes a soft clause $(\neg p_{i,j,\ell})$ with weight
+$2^\ell$, yielding a \emph{weighted} partial MaxSAT instance.
+Core-guided solvers handle weights via weight-aware core extraction
+(e.g., WPM1 with weight splitting).
+
+% ---------------------------------------------------------------------
+\subsection{Comparison of optimisation approaches}
+
+\Cref{tab:optim-cmp} summarises the key trade-offs.
+
+\begin{table}[ht]
+\centering
+\caption{Comparison of SAT-based optimisation strategies for Variant~2.}
+\label{tab:optim-cmp}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Criterion}
+  & \textbf{Non-incremental}
+  & \textbf{Incremental}
+  & \textbf{MaxSAT / PBO} \\
+\midrule
+SAT calls (external)
+  & $O(\log(N^2 c))$
+  & $O(\log(N^2 c))$
+  & 1 \\
+Learned-clause reuse
+  & \textsf{no}
+  & \textsf{yes}
+  & \textsf{yes} \\
+Cardinality encoder rebuilt
+  & each call
+  & once
+  & once / internal \\
+Implementation effort
+  & low
+  & medium
+  & low \\
+Optimality guarantee
+  & binary search
+  & binary search
+  & solver-internal \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 %% =====================================================================
 \section{Datasets and Benchmarks}\label{sec:dataset}
