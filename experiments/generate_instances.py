@@ -9,10 +9,10 @@ The generator creates two complementary instance families:
 * ``uniform``: sample every target cell uniformly from {0, ..., c-1}.  The
   feasibility status is intentionally left unknown at generation time.
 
-The output is split into a small ``pilot`` set for debugging/parameter tuning
-and a held-out ``evaluation`` set for the final comparison.  Every instance
-has a seed derived from its full experimental coordinates, so changing loop
-order does not change existing instances.
+Instances are assigned to balanced ``easy``, ``medium`` and ``hard`` tiers by
+the structural score N^2(c-1).  Every instance has a seed derived from its full
+experimental coordinates, so changing loop order does not change existing
+instances.
 """
 
 from __future__ import annotations
@@ -26,9 +26,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = "1.0"
-GENERATOR_VERSION = "1.1"
+SCHEMA_VERSION = "2.0"
+GENERATOR_VERSION = "2.0"
 FAMILIES = ("witness", "uniform")
+SIZE_TIERS = ("easy", "medium", "hard")
 
 
 class StableHashRNG:
@@ -159,13 +160,36 @@ def density_token(density: float) -> str:
     return f"d{round(density * 1000):03d}"
 
 
+def structural_score(n: int, c: int) -> int:
+    """Return the model-size proxy N^2(c-1)."""
+    return n * n * (c - 1)
+
+
+def assign_size_tiers(
+    sizes: Iterable[int], colours: Iterable[int]
+) -> dict[tuple[int, int], str]:
+    """Split configured (N, c) pairs into three balanced score-ordered tiers."""
+    pairs = sorted(
+        ((n, c) for n in sizes for c in colours),
+        key=lambda pair: (structural_score(*pair), pair[0], pair[1]),
+    )
+    if len(pairs) < 3:
+        raise ValueError("at least three (N, c) configurations are required")
+    tiers: dict[tuple[int, int], str] = {}
+    for rank, pair in enumerate(pairs):
+        tier_index = min(2, rank * 3 // len(pairs))
+        tiers[pair] = SIZE_TIERS[tier_index]
+    return tiers
+
+
 def build_instance(
     *,
     n: int,
     c: int,
+    size_tier: str,
+    score: int,
     family: str,
     density: float | None,
-    split: str,
     replicate: int,
     master_seed: int,
     instance_seed: int,
@@ -174,7 +198,7 @@ def build_instance(
     clicks: list[list[int]] | None,
 ) -> dict[str, Any]:
     family_token = "witness_" + density_token(density) if density is not None else family
-    name = f"{split}_n{n:02d}_c{c:02d}_{family_token}_r{replicate:03d}"
+    name = f"{size_tier}_n{n:02d}_c{c:02d}_{family_token}_r{replicate:03d}"
     digest = target_sha256(n, c, target)
     parameters: dict[str, Any] = {}
     if density is not None:
@@ -195,7 +219,8 @@ def build_instance(
             "generator": "experiments/generate_instances.py",
             "generator_version": GENERATOR_VERSION,
             "method": family,
-            "split": split,
+            "size_tier": size_tier,
+            "structural_score": score,
             "replicate": replicate,
             "master_seed": master_seed,
             "instance_seed": instance_seed,
@@ -237,8 +262,7 @@ def generate_dataset(
     colours: Iterable[int],
     densities: Iterable[float],
     families: Iterable[str],
-    pilot_count: int,
-    evaluation_count: int,
+    replicates: int,
     master_seed: int,
 ) -> dict[str, Any]:
     """Generate a complete benchmark directory and return its summary."""
@@ -259,101 +283,101 @@ def generate_dataset(
         raise ValueError("densities must be in (0, 1]")
     if not families or any(family not in FAMILIES for family in families):
         raise ValueError(f"families must be selected from {FAMILIES}")
-    if pilot_count < 0 or evaluation_count < 0:
-        raise ValueError("split counts must be non-negative")
-    if pilot_count + evaluation_count == 0:
-        raise ValueError("at least one instance per configuration is required")
+    if replicates < 1:
+        raise ValueError("replicates must be positive")
 
     output_dir.mkdir(parents=True)
+    tier_map = assign_size_tiers(sizes, colours)
     seen_targets: set[str] = set()
     manifest_rows: list[dict[str, Any]] = []
-    counts_by_split: Counter[str] = Counter()
+    counts_by_tier: Counter[str] = Counter()
     counts_by_family: Counter[str] = Counter()
 
-    splits = (("pilot", pilot_count), ("evaluation", evaluation_count))
-    for split, count in splits:
-        for n in sizes:
-            for c in colours:
-                family_parameters: list[tuple[str, float | None]] = []
-                if "witness" in families:
-                    family_parameters.extend(("witness", density) for density in densities)
-                if "uniform" in families:
-                    family_parameters.append(("uniform", None))
+    for n in sizes:
+        for c in colours:
+            size_tier = tier_map[(n, c)]
+            score = structural_score(n, c)
+            family_parameters: list[tuple[str, float | None]] = []
+            if "witness" in families:
+                family_parameters.extend(("witness", density) for density in densities)
+            if "uniform" in families:
+                family_parameters.append(("uniform", None))
 
-                for family, density in family_parameters:
-                    density_key = None if density is None else f"{density:.12g}"
-                    for replicate in range(count):
-                        for attempt in range(1000):
-                            instance_seed = stable_seed(
-                                master_seed,
-                                split,
-                                n,
-                                c,
-                                family,
-                                density_key,
-                                replicate,
-                                attempt,
-                            )
-                            rng = StableHashRNG(instance_seed)
-                            if family == "witness":
-                                assert density is not None
-                                clicks = sample_witness(n, c, density, rng)
-                                target = target_from_clicks(clicks, c)
-                            else:
-                                clicks = None
-                                target = sample_uniform_target(n, c, rng)
-
-                            digest = target_sha256(n, c, target)
-                            if digest not in seen_targets:
-                                break
+            for family, density in family_parameters:
+                density_key = None if density is None else f"{density:.12g}"
+                for replicate in range(replicates):
+                    for attempt in range(1000):
+                        instance_seed = stable_seed(
+                            master_seed,
+                            n,
+                            c,
+                            family,
+                            density_key,
+                            replicate,
+                            attempt,
+                        )
+                        rng = StableHashRNG(instance_seed)
+                        if family == "witness":
+                            assert density is not None
+                            clicks = sample_witness(n, c, density, rng)
+                            target = target_from_clicks(clicks, c)
                         else:
-                            raise RuntimeError(
-                                f"could not generate a unique target for N={n}, c={c}, "
-                                f"family={family}; reduce the requested dataset size"
-                            )
+                            clicks = None
+                            target = sample_uniform_target(n, c, rng)
 
-                        seen_targets.add(digest)
-                        instance = build_instance(
-                            n=n,
-                            c=c,
-                            family=family,
-                            density=density,
-                            split=split,
-                            replicate=replicate,
-                            master_seed=master_seed,
-                            instance_seed=instance_seed,
-                            duplicate_attempt=attempt,
-                            target=target,
-                            clicks=clicks,
+                        digest = target_sha256(n, c, target)
+                        if digest not in seen_targets:
+                            break
+                    else:
+                        raise RuntimeError(
+                            f"could not generate a unique target for N={n}, c={c}, "
+                            f"family={family}; reduce the requested dataset size"
                         )
-                        relative_path = Path(split) / family / f"n{n:02d}_c{c:02d}" / (
-                            instance["name"] + ".json"
-                        )
-                        write_json(output_dir / relative_path, instance)
 
-                        manifest_rows.append(
-                            {
-                                "name": instance["name"],
-                                "path": relative_path.as_posix(),
-                                "split": split,
-                                "family": family,
-                                "N": n,
-                                "c": c,
-                                "click_density": "" if density is None else density,
-                                "replicate": replicate,
-                                "instance_seed": instance_seed,
-                                "target_sha256": digest,
-                                "guaranteed_solvable": family == "witness",
-                                "witness_total_clicks": (
-                                    "" if clicks is None else instance["witness_total_clicks"]
-                                ),
-                                "known_upper_bound": (
-                                    "" if clicks is None else instance["known_upper_bound"]
-                                ),
-                            }
-                        )
-                        counts_by_split[split] += 1
-                        counts_by_family[family] += 1
+                    seen_targets.add(digest)
+                    instance = build_instance(
+                        n=n,
+                        c=c,
+                        size_tier=size_tier,
+                        score=score,
+                        family=family,
+                        density=density,
+                        replicate=replicate,
+                        master_seed=master_seed,
+                        instance_seed=instance_seed,
+                        duplicate_attempt=attempt,
+                        target=target,
+                        clicks=clicks,
+                    )
+                    relative_path = Path(size_tier) / family / f"n{n:02d}_c{c:02d}" / (
+                        instance["name"] + ".json"
+                    )
+                    write_json(output_dir / relative_path, instance)
+
+                    manifest_rows.append(
+                        {
+                            "name": instance["name"],
+                            "path": relative_path.as_posix(),
+                            "size_tier": size_tier,
+                            "structural_score": score,
+                            "family": family,
+                            "N": n,
+                            "c": c,
+                            "click_density": "" if density is None else density,
+                            "replicate": replicate,
+                            "instance_seed": instance_seed,
+                            "target_sha256": digest,
+                            "guaranteed_solvable": family == "witness",
+                            "witness_total_clicks": (
+                                "" if clicks is None else instance["witness_total_clicks"]
+                            ),
+                            "known_upper_bound": (
+                                "" if clicks is None else instance["known_upper_bound"]
+                            ),
+                        }
+                    )
+                    counts_by_tier[size_tier] += 1
+                    counts_by_family[family] += 1
 
     fieldnames = list(manifest_rows[0].keys())
     with (output_dir / "manifest.csv").open("w", encoding="utf-8", newline="") as handle:
@@ -369,13 +393,28 @@ def generate_dataset(
             "colours": colours,
             "families": families,
             "witness_densities": densities,
-            "pilot_count_per_configuration": pilot_count,
-            "evaluation_count_per_configuration": evaluation_count,
+            "replicates_per_configuration": replicates,
             "master_seed": master_seed,
+            "tier_policy": {
+                "score": "N^2 * (c - 1)",
+                "assignment": "balanced thirds after sorting (N,c) by score",
+                "pairs": [
+                    {
+                        "N": n,
+                        "c": c,
+                        "score": structural_score(n, c),
+                        "size_tier": tier_map[(n, c)],
+                    }
+                    for n, c in sorted(
+                        tier_map,
+                        key=lambda pair: (structural_score(*pair), pair[0], pair[1]),
+                    )
+                ],
+            },
         },
         "counts": {
             "total": len(manifest_rows),
-            "by_split": dict(sorted(counts_by_split.items())),
+            "by_size_tier": dict(sorted(counts_by_tier.items())),
             "by_family": dict(sorted(counts_by_family.items())),
         },
         "labelling_policy": {
@@ -392,12 +431,14 @@ This directory was generated deterministically by
 `experiments/generate_instances.py` with master seed `{master_seed}`.
 
 - Total instances: {len(manifest_rows)}
-- Pilot instances: {counts_by_split['pilot']}
-- Evaluation instances: {counts_by_split['evaluation']}
+- Easy instances: {counts_by_tier['easy']}
+- Medium instances: {counts_by_tier['medium']}
+- Hard instances: {counts_by_tier['hard']}
 - Witness-derived instances: {counts_by_family['witness']}
 - Uniform-target instances: {counts_by_family['uniform']}
 
-`manifest.csv` is the experiment index.  A witness proves feasibility and
+The size tiers are balanced thirds ordered by the structural score N^2(c-1).
+`manifest.csv` is the experiment index. A witness proves feasibility and
 provides only an upper bound; it does not prove optimality.
 """
     (output_dir / "README.md").write_text(readme, encoding="utf-8")
@@ -417,8 +458,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--densities", type=float, nargs="+", default=[0.10, 0.30, 0.60]
     )
-    parser.add_argument("--pilot-count", type=int, default=2)
-    parser.add_argument("--evaluation-count", type=int, default=8)
+    parser.add_argument("--replicates", type=int, default=10)
     parser.add_argument("--master-seed", type=int, default=270027)
     return parser.parse_args()
 
@@ -431,8 +471,7 @@ def main() -> None:
         colours=args.colours,
         densities=args.densities,
         families=args.families,
-        pilot_count=args.pilot_count,
-        evaluation_count=args.evaluation_count,
+        replicates=args.replicates,
         master_seed=args.master_seed,
     )
     print(f"Generated {summary['counts']['total']} instances in {args.output_dir}")

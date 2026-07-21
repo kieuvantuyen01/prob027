@@ -692,9 +692,48 @@ Chỉ dùng họ witness sẽ làm bộ dữ liệu lệch hoàn toàn về phí
 thi. Chỉ dùng họ uniform-target lại không bảo đảm có đủ instance khả thi ở
 từng cấu hình. Hai họ vì vậy phải được giữ riêng trong báo cáo kết quả.
 
-\subsection{Lấy mẫu theo tầng và chống thiên lệch}
+\subsection{Phân tầng easy, medium và hard}
 
-Mỗi cấu hình là một tầng độc lập. Cấu hình benchmark khuyến nghị ban đầu là:
+Kích thước mô hình tăng đồng thời theo $N$ và $c$. Generator dùng chỉ số
+cấu trúc
+\begin{equation}\label{eq:structural-score}
+  B(N,c)=N^2(c-1).
+\end{equation}
+Đây chính là số biến đóng góp đơn vị $u_{ijh}$ dùng để đếm tổng click trong
+mô hình SAT ở \cref{eq:unit-sum}. Generator sắp xếp tất cả các cặp $(N,c)$
+theo $B$, sau đó chia danh sách thành ba phần bằng nhau. Với cấu hình mặc
+định, sáu cặp thuộc mỗi nhóm như sau:
+
+\begin{table}[H]
+\centering
+\caption{Phân nhóm theo kích thước cấu trúc $B=N^2(c-1)$.}
+\label{tab:size-tiers}
+\begin{tabularx}{\textwidth}{@{}l X l@{}}
+\toprule
+\textbf{Nhóm} & \textbf{Các cặp $(N,c)$ theo thứ tự tăng của $B$}
+& \textbf{Khoảng $B$} \\
+\midrule
+Easy
+& $(4,2),(5,2),(4,3),(6,2),(4,4),(5,3)$
+& $16$--$50$ \\
+Medium
+& $(8,2),(6,3),(5,4),(10,2),(6,4),(8,3)$
+& $64$--$128$ \\
+Hard
+& $(12,2),(8,4),(10,3),(12,3),(10,4),(12,4)$
+& $144$--$432$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{notebox}[Cách hiểu đúng nhãn độ khó]
+Easy, medium và hard ở đây là nhãn \emph{kích thước cấu trúc}, được xác định
+trước khi chạy solver. Runtime thực tế còn phụ thuộc target, optimum và trạng
+thái SAT/UNSAT. Sau thực nghiệm có thể bổ sung
+\texttt{observed\_difficulty}, nhưng không thay đổi nhãn cấu trúc ban đầu.
+\end{notebox}
+
+Cấu hình benchmark đầy đủ là:
 
 \begin{table}[H]
 \centering
@@ -708,7 +747,7 @@ Kích thước $N$ & $4,5,6,8,10,12$ & 6 \\
 Số màu $c$ & $2,3,4$ & 3 \\
 Mật độ witness $\rho$ & $0.10,0.30,0.60$ & 3 \\
 Họ không có $\rho$ & uniform-target & 1 \\
-Số lặp mỗi tầng & 2 pilot và 8 evaluation & 10 \\
+Chỉ số lặp $r$ & $0,1,\ldots,9$ & 10 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -716,21 +755,18 @@ Số lặp mỗi tầng & 2 pilot và 8 evaluation & 10 \\
 Với mỗi cặp $(N,c)$ có ba tầng witness và một tầng uniform-target. Tổng số
 instance là
 \[
-  6\times3\times(3+1)\times(2+8)=720,
+  6\times3\times(3+1)\times10=720.
 \]
-gồm 144 instance pilot và 576 instance evaluation. Các instance $N=3$ chỉ
-dùng trong bộ kiểm chứng nhỏ; không đưa vào benchmark chính vì với $c=2$
-không gian target khả thi rất nhỏ, dễ lặp lại target giữa các tầng.
-Bộ pilot được phép dùng
-để sửa lỗi, chọn encoding và tham số solver. Bộ evaluation chỉ được chạy
-sau khi cấu hình thuật toán đã chốt; đây là số liệu dùng cho kết luận cuối.
+Mỗi nhóm easy, medium và hard có sáu cặp $(N,c)$. Mỗi cặp có bốn tầng sinh
+dữ liệu và mỗi tầng có 10 lần lặp, nên mỗi nhóm có
+$6\times4\times10=240$ instance. Bộ dữ liệu vì vậy cân bằng giữa ba mức.
 
 Để việc sinh dữ liệu không phụ thuộc thứ tự vòng lặp, mỗi instance dùng một
 seed 64-bit riêng:
 \[
   \operatorname{seed}_{\I}
   =\operatorname{first64}\!\left(
-  \operatorname{SHA256}(S,\text{split},N,c,\text{họ},\rho,r,a)\right),
+  \operatorname{SHA256}(S,N,c,\text{họ},\rho,r,a)\right),
 \]
 trong đó $S$ là master seed, $r$ là số thứ tự lặp và $a$ là số lần thử lại
 khi gặp target trùng. Target được nhận diện bằng SHA-256 của bộ $(N,c,T)$.
@@ -744,7 +780,8 @@ Các phép lấy mẫu tiếp theo dùng bộ sinh counter-mode SHA-256 do dự 
 Mỗi instance đi qua các bước sau:
 
 \begin{enumerate}
-  \item đọc một tầng $(N,c,\text{họ},\rho,\text{split},r)$;
+  \item đọc một tầng $(N,c,\text{họ},\rho,r)$ và tính
+        $B=N^2(c-1)$;
   \item dẫn xuất instance seed từ master seed;
   \item sinh witness hoặc sinh trực tiếp target;
   \item tính target, thống kê tần suất màu và hash;
@@ -770,38 +807,25 @@ Quy tắc gắn nhãn được cố định như sau:
 \subsection{Triển khai trong dự án}
 
 Generator chỉ dùng thư viện chuẩn Python và từ chối ghi đè thư mục đã tồn
-tại. Lệnh sinh bộ demo đi kèm là:
-
-\begin{lstlisting}[style=jsonstyle,language={}]
-python3 experiments/generate_instances.py \
-  --output-dir data/generated_demo \
-  --sizes 3 4 --colours 2 3 \
-  --densities 0.15 0.40 \
-  --pilot-count 1 --evaluation-count 2 \
-  --master-seed 270027
-\end{lstlisting}
-
-Bộ demo có 36 instance: 12 pilot, 24 evaluation; trong đó 24 instance
-witness và 12 instance uniform-target. Tất cả 36 target là khác nhau.
-Kiểm tra toàn bộ dataset bằng:
-
-\begin{lstlisting}[style=jsonstyle,language={}]
-python3 experiments/validate_dataset.py data/generated_demo
-\end{lstlisting}
-
-Lệnh sinh bộ 720 instance khuyến nghị là:
+tại. Bộ 720 instance nằm trong \texttt{data/benchmark\_v1} và được sinh bằng:
 
 \begin{lstlisting}[style=jsonstyle,language={}]
 python3 experiments/generate_instances.py \
   --output-dir data/benchmark_v1 \
   --sizes 4 5 6 8 10 12 --colours 2 3 4 \
   --densities 0.10 0.30 0.60 \
-  --pilot-count 2 --evaluation-count 8 \
+  --replicates 10 \
   --master-seed 270027
 \end{lstlisting}
 
+Kiểm tra toàn bộ dataset bằng:
+
+\begin{lstlisting}[style=jsonstyle,language={}]
+python3 experiments/validate_dataset.py data/benchmark_v1
+\end{lstlisting}
+
 Các file được tổ chức theo
-\texttt{split/family/nNN\_cCC/}. File \texttt{manifest.csv} là chỉ mục dùng
+\texttt{size\_tier/family/nNN\_cCC/}. File \texttt{manifest.csv} là chỉ mục dùng
 cho chương trình chạy thực nghiệm; \texttt{dataset\_summary.json} lưu toàn
 bộ cấu hình để có thể tái lập.
 
@@ -845,14 +869,15 @@ Một instance witness sinh tự động có các trường chính sau:
 
 \begin{lstlisting}[style=jsonstyle,language={},caption={Schema JSON rút gọn của một instance witness.}]
 {
-  "schema_version": "1.0",
-  "name": "evaluation_n04_c03_witness_d150_r000",
+  "schema_version": "2.0",
+  "name": "easy_n04_c03_witness_d100_r000",
   "N": 4,
   "c": 3,
   "target": [[...], [...], [...], [...]],
   "generation": {
     "method": "witness",
-    "split": "evaluation",
+    "size_tier": "easy",
+    "structural_score": 32,
     "master_seed": 270027,
     "instance_seed": 123456789,
     "target_sha256": "..."
@@ -881,11 +906,11 @@ python3 models/sat_variant2.py \
 \end{lstlisting}
 
 Tham số \texttt{--input-dir} đọc đệ quy các file instance và tự bỏ qua
-\texttt{dataset\_summary.json}. Ví dụ chạy toàn bộ tập pilot đã sinh:
+\texttt{dataset\_summary.json}. Ví dụ chạy toàn bộ nhóm easy:
 
 \begin{lstlisting}[style=jsonstyle,language={}]
 python3 models/sat_variant2.py \
-  --input-dir data/generated_demo/pilot
+  --input-dir data/benchmark_v1/easy
 \end{lstlisting}
 
 Kết quả cần kiểm tra gồm:

@@ -1,0 +1,152 @@
+{
+  "schema_version": "2.0",
+  "name": "medium_n10_c02_uniform_r007",
+  "description": "Uniformly sampled target with feasibility unclassified",
+  "N": 10,
+  "c": 2,
+  "target": [
+    [
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1
+    ],
+    [
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1
+    ],
+    [
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "uniform",
+    "size_tier": "medium",
+    "structural_score": 100,
+    "replicate": 7,
+    "master_seed": 270027,
+    "instance_seed": 2833780136614683545,
+    "duplicate_attempt": 0,
+    "parameters": {},
+    "target_sha256": "1c7f811875a585f1f21c13e0bd7e2ff202ba1c638a02f127e8febd98caddc2ff"
+  },
+  "target_statistics": {
+    "nonzero_cells": 42,
+    "nonzero_fraction": 0.42,
+    "histogram": {
+      "0": 58,
+      "1": 42
+    }
+  },
+  "guaranteed_solvable": false,
+  "status_at_generation": "unclassified"
+}

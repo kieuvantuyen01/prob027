@@ -1,0 +1,80 @@
+{
+  "schema_version": "2.0",
+  "name": "easy_n06_c02_uniform_r000",
+  "description": "Uniformly sampled target with feasibility unclassified",
+  "N": 6,
+  "c": 2,
+  "target": [
+    [
+      0,
+      0,
+      1,
+      1,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      0,
+      1
+    ],
+    [
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1,
+      1,
+      0
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "uniform",
+    "size_tier": "easy",
+    "structural_score": 36,
+    "replicate": 0,
+    "master_seed": 270027,
+    "instance_seed": 15723206035412267337,
+    "duplicate_attempt": 0,
+    "parameters": {},
+    "target_sha256": "c81b0d761ca2ba78b3f8459609510584d3a1de8ac9c1073c0e71ec9e657848f2"
+  },
+  "target_statistics": {
+    "nonzero_cells": 16,
+    "nonzero_fraction": 0.4444444444444444,
+    "histogram": {
+      "0": 20,
+      "1": 16
+    }
+  },
+  "guaranteed_solvable": false,
+  "status_at_generation": "unclassified"
+}

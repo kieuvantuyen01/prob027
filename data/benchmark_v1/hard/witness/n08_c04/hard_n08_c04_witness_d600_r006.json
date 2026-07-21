@@ -1,0 +1,200 @@
+{
+  "schema_version": "2.0",
+  "name": "hard_n08_c04_witness_d600_r006",
+  "description": "Feasible target derived from a sampled click witness",
+  "N": 8,
+  "c": 4,
+  "target": [
+    [
+      2,
+      3,
+      2,
+      3,
+      3,
+      2,
+      3,
+      2
+    ],
+    [
+      1,
+      3,
+      3,
+      3,
+      3,
+      0,
+      2,
+      3
+    ],
+    [
+      0,
+      0,
+      1,
+      1,
+      1,
+      2,
+      3,
+      0
+    ],
+    [
+      2,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      3
+    ],
+    [
+      1,
+      1,
+      1,
+      3,
+      0,
+      1,
+      3,
+      2
+    ],
+    [
+      3,
+      3,
+      2,
+      1,
+      1,
+      0,
+      1,
+      2
+    ],
+    [
+      0,
+      0,
+      3,
+      1,
+      1,
+      3,
+      1,
+      1
+    ],
+    [
+      1,
+      0,
+      2,
+      0,
+      3,
+      1,
+      3,
+      3
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "witness",
+    "size_tier": "hard",
+    "structural_score": 192,
+    "replicate": 6,
+    "master_seed": 270027,
+    "instance_seed": 1989827279890752443,
+    "duplicate_attempt": 0,
+    "parameters": {
+      "requested_nonzero_click_fraction": 0.6
+    },
+    "target_sha256": "71c66ad3d8fcef3ac7acb06654ca6b9f2562141a3b8fbc35cf9768bf4c9e154e"
+  },
+  "target_statistics": {
+    "nonzero_cells": 53,
+    "nonzero_fraction": 0.828125,
+    "histogram": {
+      "0": 11,
+      "1": 22,
+      "2": 11,
+      "3": 20
+    }
+  },
+  "guaranteed_solvable": true,
+  "status_at_generation": "feasible_by_construction",
+  "witness_clicks": [
+    [
+      0,
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      3,
+      0,
+      1,
+      2,
+      2,
+      0,
+      3,
+      3
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      2,
+      0,
+      0,
+      0
+    ],
+    [
+      2,
+      2,
+      0,
+      0,
+      0,
+      3,
+      0,
+      3
+    ],
+    [
+      1,
+      0,
+      1,
+      0,
+      3,
+      1,
+      0,
+      2
+    ],
+    [
+      2,
+      1,
+      3,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      0,
+      3,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      3,
+      2,
+      3,
+      0,
+      3,
+      0
+    ]
+  ],
+  "witness_total_clicks": 72,
+  "known_upper_bound": 72
+}

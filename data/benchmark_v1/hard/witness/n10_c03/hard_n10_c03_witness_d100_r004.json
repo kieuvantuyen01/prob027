@@ -1,0 +1,279 @@
+{
+  "schema_version": "2.0",
+  "name": "hard_n10_c03_witness_d100_r004",
+  "description": "Feasible target derived from a sampled click witness",
+  "N": 10,
+  "c": 3,
+  "target": [
+    [
+      2,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      2,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      2,
+      2,
+      1
+    ],
+    [
+      2,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      2,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      2,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      0,
+      1,
+      1,
+      2,
+      0,
+      1,
+      2,
+      2,
+      1,
+      1
+    ],
+    [
+      0,
+      1,
+      1,
+      2,
+      0,
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      0,
+      1,
+      1,
+      2,
+      0,
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      2,
+      0,
+      2
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "witness",
+    "size_tier": "hard",
+    "structural_score": 200,
+    "replicate": 4,
+    "master_seed": 270027,
+    "instance_seed": 775505624230920305,
+    "duplicate_attempt": 0,
+    "parameters": {
+      "requested_nonzero_click_fraction": 0.1
+    },
+    "target_sha256": "a9e2c32aec447079a1e6336bfbf66071a63647a0f3fec5422e2c73e1121d8b82"
+  },
+  "target_statistics": {
+    "nonzero_cells": 50,
+    "nonzero_fraction": 0.5,
+    "histogram": {
+      "0": 50,
+      "1": 26,
+      "2": 24
+    }
+  },
+  "guaranteed_solvable": true,
+  "status_at_generation": "feasible_by_construction",
+  "witness_clicks": [
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      2,
+      2,
+      0,
+      2
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0
+    ]
+  ],
+  "witness_total_clicks": 14,
+  "known_upper_bound": 14
+}

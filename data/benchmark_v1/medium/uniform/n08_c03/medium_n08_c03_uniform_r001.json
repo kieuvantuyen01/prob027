@@ -1,0 +1,113 @@
+{
+  "schema_version": "2.0",
+  "name": "medium_n08_c03_uniform_r001",
+  "description": "Uniformly sampled target with feasibility unclassified",
+  "N": 8,
+  "c": 3,
+  "target": [
+    [
+      0,
+      0,
+      2,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      2,
+      0,
+      2,
+      1,
+      0,
+      1,
+      1,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      2,
+      2,
+      2,
+      2,
+      1
+    ],
+    [
+      0,
+      0,
+      1,
+      2,
+      2,
+      1,
+      0,
+      1
+    ],
+    [
+      1,
+      2,
+      1,
+      0,
+      0,
+      2,
+      0,
+      2
+    ],
+    [
+      0,
+      2,
+      2,
+      0,
+      1,
+      1,
+      0,
+      2
+    ],
+    [
+      0,
+      1,
+      1,
+      2,
+      2,
+      2,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      2,
+      0,
+      0,
+      2
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "uniform",
+    "size_tier": "medium",
+    "structural_score": 128,
+    "replicate": 1,
+    "master_seed": 270027,
+    "instance_seed": 6408485643458112632,
+    "duplicate_attempt": 0,
+    "parameters": {},
+    "target_sha256": "5e1256900b6dedd01b5e368fc2168c1f3b5f8947aeb649011aeae3bdd5b252a1"
+  },
+  "target_statistics": {
+    "nonzero_cells": 44,
+    "nonzero_fraction": 0.6875,
+    "histogram": {
+      "0": 20,
+      "1": 24,
+      "2": 20
+    }
+  },
+  "guaranteed_solvable": false,
+  "status_at_generation": "unclassified"
+}

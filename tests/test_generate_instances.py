@@ -10,7 +10,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "experiments"))
 
-from generate_instances import generate_dataset, target_from_clicks  # noqa: E402
+from generate_instances import (  # noqa: E402
+    assign_size_tiers,
+    generate_dataset,
+    structural_score,
+    target_from_clicks,
+)
 from validate_dataset import validate_dataset  # noqa: E402
 
 
@@ -40,8 +45,7 @@ class GeneratorTests(unittest.TestCase):
                 "colours": [2, 3],
                 "densities": [0.2, 0.5],
                 "families": ["witness", "uniform"],
-                "pilot_count": 1,
-                "evaluation_count": 1,
+                "replicates": 2,
                 "master_seed": 270027,
             }
             first_summary = generate_dataset(first, **kwargs)
@@ -71,12 +75,11 @@ class GeneratorTests(unittest.TestCase):
             dataset_dir = Path(temporary) / "dataset"
             generate_dataset(
                 dataset_dir,
-                sizes=[3],
+                sizes=[3, 4, 5],
                 colours=[2],
                 densities=[0.3],
                 families=["witness"],
-                pilot_count=1,
-                evaluation_count=0,
+                replicates=1,
                 master_seed=7,
             )
             instance_path = next(dataset_dir.glob("*/*/*/*.json"))
@@ -87,6 +90,18 @@ class GeneratorTests(unittest.TestCase):
                 instance["known_upper_bound"],
                 sum(sum(row) for row in instance["witness_clicks"]),
             )
+
+    def test_default_tiers_are_balanced_and_score_ordered(self) -> None:
+        tiers = assign_size_tiers([4, 5, 6, 8, 10, 12], [2, 3, 4])
+        counts = {tier: list(tiers.values()).count(tier) for tier in set(tiers.values())}
+        self.assertEqual(counts, {"easy": 6, "medium": 6, "hard": 6})
+
+        scores = {
+            tier: [structural_score(n, c) for (n, c), value in tiers.items() if value == tier]
+            for tier in ("easy", "medium", "hard")
+        }
+        self.assertLessEqual(max(scores["easy"]), min(scores["medium"]))
+        self.assertLessEqual(max(scores["medium"]), min(scores["hard"]))
 
 
 if __name__ == "__main__":

@@ -8,20 +8,10 @@ families of instances:
 - `uniform`: target cells are sampled uniformly and feasibility remains
   `unclassified` until an exact solver runs.
 
-Instances are split into `pilot` and `evaluation`. Use the pilot split while
-selecting encodings or solver parameters; reserve evaluation for the final
-reported experiment.
-
-Generate the included 36-instance demo:
-
-```bash
-python3 experiments/generate_instances.py \
-  --output-dir data/generated_demo \
-  --sizes 3 4 --colours 2 3 \
-  --densities 0.15 0.40 \
-  --pilot-count 1 --evaluation-count 2 \
-  --master-seed 270027
-```
+Instances are organised into `easy`, `medium` and `hard` tiers. The generator
+computes the structural score `N^2 * (c - 1)`, sorts all configured `(N, c)`
+pairs by this score, and divides the list into three balanced groups. This is a
+model-size classification, not a claim about measured solver runtime.
 
 Generate the recommended 720-instance thesis benchmark:
 
@@ -30,20 +20,20 @@ python3 experiments/generate_instances.py \
   --output-dir data/benchmark_v1 \
   --sizes 4 5 6 8 10 12 --colours 2 3 4 \
   --densities 0.10 0.30 0.60 \
-  --pilot-count 2 --evaluation-count 8 \
+  --replicates 10 \
   --master-seed 270027
 ```
 
 The output directory must not already exist. Validate a generated dataset with:
 
 ```bash
-python3 experiments/validate_dataset.py data/generated_demo
+python3 experiments/validate_dataset.py data/benchmark_v1
 ```
 
-Run the minimisation solver recursively over a split with:
+Run the minimisation solver recursively over one tier with:
 
 ```bash
-python3 models/sat_variant2.py --input-dir data/generated_demo/pilot
+python3 models/sat_variant2.py --input-dir data/benchmark_v1/easy
 ```
 
 The generator writes `manifest.csv`, `dataset_summary.json`, a dataset README,

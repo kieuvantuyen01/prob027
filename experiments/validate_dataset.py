@@ -10,7 +10,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from generate_instances import target_from_clicks, target_sha256, validate_matrix
+from generate_instances import (
+    SIZE_TIERS,
+    assign_size_tiers,
+    structural_score,
+    target_from_clicks,
+    target_sha256,
+    validate_matrix,
+)
 
 
 def validate_instance(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
@@ -40,6 +47,13 @@ def validate_instance(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
     stored_digest = instance["generation"].get("target_sha256")
     if stored_digest != digest:
         errors.append(f"{path}: target_sha256 mismatch")
+
+    size_tier = instance["generation"].get("size_tier")
+    if size_tier not in SIZE_TIERS:
+        errors.append(f"{path}: invalid size_tier {size_tier!r}")
+    expected_score = structural_score(n, c)
+    if instance["generation"].get("structural_score") != expected_score:
+        errors.append(f"{path}: structural_score mismatch")
 
     guaranteed = instance.get("guaranteed_solvable", False)
     witness = instance.get("witness_clicks")
@@ -72,8 +86,18 @@ def validate_instance(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
 def validate_dataset(dataset_dir: Path) -> tuple[dict[str, Any], list[str]]:
     errors: list[str] = []
     manifest_path = dataset_dir / "manifest.csv"
+    dataset_summary_path = dataset_dir / "dataset_summary.json"
     if not manifest_path.is_file():
         return {}, [f"missing manifest: {manifest_path}"]
+    if not dataset_summary_path.is_file():
+        return {}, [f"missing dataset summary: {dataset_summary_path}"]
+
+    try:
+        dataset_summary = json.loads(dataset_summary_path.read_text(encoding="utf-8"))
+        config = dataset_summary["config"]
+        expected_tiers = assign_size_tiers(config["sizes"], config["colours"])
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        return {}, [f"invalid dataset summary: {exc}"]
 
     with manifest_path.open(encoding="utf-8", newline="") as handle:
         manifest_rows = list(csv.DictReader(handle))
@@ -83,7 +107,7 @@ def validate_dataset(dataset_dir: Path) -> tuple[dict[str, Any], list[str]]:
         errors.append("manifest contains duplicate paths")
 
     digests: dict[str, Path] = {}
-    counts_by_split: Counter[str] = Counter()
+    counts_by_tier: Counter[str] = Counter()
     counts_by_family: Counter[str] = Counter()
     checked_paths: set[str] = set()
 
@@ -107,14 +131,25 @@ def validate_dataset(dataset_dir: Path) -> tuple[dict[str, Any], list[str]]:
         else:
             digests[digest] = instance_path
 
-        for field in ("name", "split"):
-            expected = instance["name"] if field == "name" else instance["generation"]["split"]
+        for field in ("name", "size_tier", "structural_score"):
+            if field == "name":
+                expected = instance["name"]
+            else:
+                expected = instance["generation"][field]
             if row[field] != str(expected):
                 errors.append(f"{relative_path}: manifest {field} mismatch")
         if row["target_sha256"] != digest:
             errors.append(f"{relative_path}: manifest target_sha256 mismatch")
 
-        counts_by_split[instance["generation"]["split"]] += 1
+        expected_tier = expected_tiers.get((instance["N"], instance["c"]))
+        actual_tier = instance["generation"]["size_tier"]
+        if actual_tier != expected_tier:
+            errors.append(
+                f"{relative_path}: size_tier {actual_tier!r} does not match "
+                f"configured tier {expected_tier!r}"
+            )
+
+        counts_by_tier[instance["generation"]["size_tier"]] += 1
         counts_by_family[instance["generation"]["method"]] += 1
 
     instance_files = {
@@ -130,10 +165,17 @@ def validate_dataset(dataset_dir: Path) -> tuple[dict[str, Any], list[str]]:
 
     summary = {
         "instances": len(checked_paths),
-        "by_split": dict(sorted(counts_by_split.items())),
+        "by_size_tier": dict(sorted(counts_by_tier.items())),
         "by_family": dict(sorted(counts_by_family.items())),
         "unique_targets": len(digests),
     }
+    declared_counts = dataset_summary.get("counts", {})
+    if declared_counts.get("total") != summary["instances"]:
+        errors.append("dataset_summary total count mismatch")
+    if declared_counts.get("by_size_tier") != summary["by_size_tier"]:
+        errors.append("dataset_summary size-tier counts mismatch")
+    if declared_counts.get("by_family") != summary["by_family"]:
+        errors.append("dataset_summary family counts mismatch")
     return summary, errors
 
 

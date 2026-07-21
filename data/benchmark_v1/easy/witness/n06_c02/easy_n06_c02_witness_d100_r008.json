@@ -1,0 +1,134 @@
+{
+  "schema_version": "2.0",
+  "name": "easy_n06_c02_witness_d100_r008",
+  "description": "Feasible target derived from a sampled click witness",
+  "N": 6,
+  "c": 2,
+  "target": [
+    [
+      1,
+      1,
+      1,
+      1,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      0,
+      1
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "2.0",
+    "method": "witness",
+    "size_tier": "easy",
+    "structural_score": 36,
+    "replicate": 8,
+    "master_seed": 270027,
+    "instance_seed": 1010720753602463410,
+    "duplicate_attempt": 0,
+    "parameters": {
+      "requested_nonzero_click_fraction": 0.1
+    },
+    "target_sha256": "b5bc9399b05609e08e36c312b23ed4022c56e3f22f3ac68612a707a7b3d58bbf"
+  },
+  "target_statistics": {
+    "nonzero_cells": 20,
+    "nonzero_fraction": 0.5555555555555556,
+    "histogram": {
+      "0": 16,
+      "1": 20
+    }
+  },
+  "guaranteed_solvable": true,
+  "status_at_generation": "feasible_by_construction",
+  "witness_clicks": [
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0
+    ]
+  ],
+  "witness_total_clicks": 4,
+  "known_upper_bound": 4
+}
