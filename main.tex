@@ -741,25 +741,35 @@ Cấu hình benchmark đầy đủ là:
 \label{tab:data-config}
 \begin{tabularx}{\textwidth}{@{}l X l@{}}
 \toprule
-\textbf{Thành phần} & \textbf{Giá trị} & \textbf{Số mức} \\
+\textbf{Thành phần} & \textbf{Cách lấy mẫu} & \textbf{Số instance} \\
 \midrule
-Kích thước $N$ & $4,5,6,8,10,12$ & 6 \\
-Số màu $c$ & $2,3,4$ & 3 \\
-Mật độ witness $\rho$ & $0.10,0.30,0.60$ & 3 \\
-Họ không có $\rho$ & uniform-target & 1 \\
-Chỉ số lặp $r$ & $0,1,\ldots,9$ & 10 \\
+Witness cơ sở
+& Một instance cho mỗi $(N,c,\rho)$, với
+$N\in\{4,5,6,8,10,12\}$, $c\in\{2,3,4\}$ và
+$\rho\in\{0.10,0.30,0.60\}$
+& 54 \\
+Witness bổ sung
+& Hai instance thêm cho mỗi nhóm độ khó; mật độ được luân phiên
+& 6 \\
+Uniform-target
+& Hai instance cho mỗi nhóm độ khó; giá trị $c$ được luân phiên
+& 6 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Với mỗi cặp $(N,c)$ có ba tầng witness và một tầng uniform-target. Tổng số
-instance là
+Phần witness trước hết phủ toàn bộ các tổ hợp $(N,c,\rho)$:
 \[
-  6\times3\times(3+1)\times10=720.
+  6\times3\times3=54.
 \]
-Mỗi nhóm easy, medium và hard có sáu cặp $(N,c)$. Mỗi cặp có bốn tầng sinh
-dữ liệu và mỗi tầng có 10 lần lặp, nên mỗi nhóm có
-$6\times4\times10=240$ instance. Bộ dữ liệu vì vậy cân bằng giữa ba mức.
+Sáu witness bổ sung làm tổng witness bằng 60. Sáu uniform-target được chia
+đều hai instance cho mỗi nhóm. Tổng kích thước benchmark là
+\[
+  60+6=66.
+\]
+Mỗi nhóm easy, medium và hard có 20 witness và 2 uniform-target, tức 22
+instance. Cách phân bổ này giữ được độ phủ của witness nhưng tránh tạo hàng
+trăm file gần giống nhau.
 
 Để việc sinh dữ liệu không phụ thuộc thứ tự vòng lặp, mỗi instance dùng một
 seed 64-bit riêng:
@@ -807,14 +817,14 @@ Quy tắc gắn nhãn được cố định như sau:
 \subsection{Triển khai trong dự án}
 
 Generator chỉ dùng thư viện chuẩn Python và từ chối ghi đè thư mục đã tồn
-tại. Bộ 720 instance nằm trong \texttt{data/benchmark\_v1} và được sinh bằng:
+tại. Bộ 66 instance nằm trong \texttt{data/benchmark\_v1} và được sinh bằng:
 
 \begin{lstlisting}[style=jsonstyle,language={}]
 python3 experiments/generate_instances.py \
   --output-dir data/benchmark_v1 \
   --sizes 4 5 6 8 10 12 --colours 2 3 4 \
   --densities 0.10 0.30 0.60 \
-  --replicates 10 \
+  --witness-count 60 --uniform-count 6 \
   --master-seed 270027
 \end{lstlisting}
 

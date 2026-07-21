@@ -11,10 +11,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "experiments"))
 
 from generate_instances import (  # noqa: E402
+    allocate_total,
     assign_size_tiers,
     generate_dataset,
     structural_score,
     target_from_clicks,
+    uniform_item_order,
+    witness_item_order,
 )
 from validate_dataset import validate_dataset  # noqa: E402
 
@@ -45,7 +48,8 @@ class GeneratorTests(unittest.TestCase):
                 "colours": [2, 3],
                 "densities": [0.2, 0.5],
                 "families": ["witness", "uniform"],
-                "replicates": 2,
+                "witness_count": 16,
+                "uniform_count": 8,
                 "master_seed": 270027,
             }
             first_summary = generate_dataset(first, **kwargs)
@@ -79,7 +83,8 @@ class GeneratorTests(unittest.TestCase):
                 colours=[2],
                 densities=[0.3],
                 families=["witness"],
-                replicates=1,
+                witness_count=3,
+                uniform_count=0,
                 master_seed=7,
             )
             instance_path = next(dataset_dir.glob("*/*/*/*.json"))
@@ -102,6 +107,24 @@ class GeneratorTests(unittest.TestCase):
         }
         self.assertLessEqual(max(scores["easy"]), min(scores["medium"]))
         self.assertLessEqual(max(scores["medium"]), min(scores["hard"]))
+
+    def test_requested_family_totals_are_balanced_by_tier(self) -> None:
+        sizes = [4, 5, 6, 8, 10, 12]
+        colours = [2, 3, 4]
+        densities = [0.1, 0.3, 0.6]
+        tiers = assign_size_tiers(sizes, colours)
+        witness_counts = allocate_total(witness_item_order(tiers, densities), 60)
+        uniform_counts = allocate_total(uniform_item_order(tiers, colours), 6)
+
+        witness_by_tier = {tier: 0 for tier in ("easy", "medium", "hard")}
+        uniform_by_tier = {tier: 0 for tier in ("easy", "medium", "hard")}
+        for (n, c, _density), count in witness_counts.items():
+            witness_by_tier[tiers[(n, c)]] += count
+        for (n, c), count in uniform_counts.items():
+            uniform_by_tier[tiers[(n, c)]] += count
+
+        self.assertEqual(witness_by_tier, {"easy": 20, "medium": 20, "hard": 20})
+        self.assertEqual(uniform_by_tier, {"easy": 2, "medium": 2, "hard": 2})
 
 
 if __name__ == "__main__":

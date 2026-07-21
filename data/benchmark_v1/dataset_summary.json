@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "generator_version": "2.0",
+  "generator_version": "2.1",
   "config": {
     "sizes": [
       4,
@@ -24,7 +24,8 @@
       0.3,
       0.6
     ],
-    "replicates_per_configuration": 10,
+    "requested_witness_instances": 60,
+    "requested_uniform_instances": 6,
     "master_seed": 270027,
     "tier_policy": {
       "score": "N^2 * (c - 1)",
@@ -142,15 +143,15 @@
     }
   },
   "counts": {
-    "total": 720,
+    "total": 66,
     "by_size_tier": {
-      "easy": 240,
-      "hard": 240,
-      "medium": 240
+      "easy": 22,
+      "hard": 22,
+      "medium": 22
     },
     "by_family": {
-      "uniform": 180,
-      "witness": 540
+      "uniform": 6,
+      "witness": 60
     }
   },
   "labelling_policy": {

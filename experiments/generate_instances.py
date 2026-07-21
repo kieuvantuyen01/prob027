@@ -27,7 +27,7 @@ from typing import Any, Iterable
 
 
 SCHEMA_VERSION = "2.0"
-GENERATOR_VERSION = "2.0"
+GENERATOR_VERSION = "2.1"
 FAMILIES = ("witness", "uniform")
 SIZE_TIERS = ("easy", "medium", "hard")
 
@@ -182,6 +182,76 @@ def assign_size_tiers(
     return tiers
 
 
+def interleave_tier_buckets(
+    buckets: dict[str, list[tuple[Any, ...]]]
+) -> list[tuple[Any, ...]]:
+    """Interleave easy, medium and hard items to spread any remainder."""
+    result: list[tuple[Any, ...]] = []
+    max_length = max((len(items) for items in buckets.values()), default=0)
+    for index in range(max_length):
+        for tier in SIZE_TIERS:
+            if index < len(buckets[tier]):
+                result.append(buckets[tier][index])
+    return result
+
+
+def witness_item_order(
+    tier_map: dict[tuple[int, int], str], densities: list[float]
+) -> list[tuple[int, int, float]]:
+    """Order witness strata so extra samples are balanced by tier and density."""
+    buckets: dict[str, list[tuple[Any, ...]]] = {tier: [] for tier in SIZE_TIERS}
+    for tier_index, tier in enumerate(SIZE_TIERS):
+        pairs = sorted(
+            (pair for pair, value in tier_map.items() if value == tier),
+            key=lambda pair: (structural_score(*pair), pair[0], pair[1]),
+        )
+        rotated_densities = densities[tier_index:] + densities[:tier_index]
+        for pair_index in range(len(pairs)):
+            for density in rotated_densities:
+                n, c = pairs[pair_index]
+                buckets[tier].append((n, c, density))
+    return [tuple(item) for item in interleave_tier_buckets(buckets)]
+
+
+def uniform_item_order(
+    tier_map: dict[tuple[int, int], str], colours: list[int]
+) -> list[tuple[int, int]]:
+    """Order target strata to balance tiers and rotate colours."""
+    buckets: dict[str, list[tuple[Any, ...]]] = {tier: [] for tier in SIZE_TIERS}
+    for tier_index, tier in enumerate(SIZE_TIERS):
+        pairs = [pair for pair, value in tier_map.items() if value == tier]
+        colour_groups = {
+            colour: sorted(
+                (pair for pair in pairs if pair[1] == colour),
+                key=lambda pair: (structural_score(*pair), pair[0]),
+            )
+            for colour in colours
+        }
+        rotated_colours = colours[tier_index:] + colours[:tier_index]
+        max_group = max((len(group) for group in colour_groups.values()), default=0)
+        for group_index in range(max_group):
+            for colour in rotated_colours:
+                group = colour_groups[colour]
+                if group_index < len(group):
+                    buckets[tier].append(group[group_index])
+    return [tuple(item) for item in interleave_tier_buckets(buckets)]
+
+
+def allocate_total(items: list[tuple[Any, ...]], total: int) -> dict[tuple[Any, ...], int]:
+    """Allocate an exact total as evenly as possible over an ordered item list."""
+    if total < 0:
+        raise ValueError("requested instance count must be non-negative")
+    if not items:
+        if total:
+            raise ValueError("cannot allocate instances without configurations")
+        return {}
+    base, remainder = divmod(total, len(items))
+    return {
+        item: base + (1 if index < remainder else 0)
+        for index, item in enumerate(items)
+    }
+
+
 def build_instance(
     *,
     n: int,
@@ -262,7 +332,8 @@ def generate_dataset(
     colours: Iterable[int],
     densities: Iterable[float],
     families: Iterable[str],
-    replicates: int,
+    witness_count: int,
+    uniform_count: int,
     master_seed: int,
 ) -> dict[str, Any]:
     """Generate a complete benchmark directory and return its summary."""
@@ -283,11 +354,23 @@ def generate_dataset(
         raise ValueError("densities must be in (0, 1]")
     if not families or any(family not in FAMILIES for family in families):
         raise ValueError(f"families must be selected from {FAMILIES}")
-    if replicates < 1:
-        raise ValueError("replicates must be positive")
+    if witness_count < 0 or uniform_count < 0:
+        raise ValueError("family counts must be non-negative")
+    if "witness" in families and witness_count == 0:
+        raise ValueError("witness_count must be positive when witness family is enabled")
+    if "uniform" in families and uniform_count == 0:
+        raise ValueError("uniform_count must be positive when uniform family is enabled")
 
     output_dir.mkdir(parents=True)
     tier_map = assign_size_tiers(sizes, colours)
+    witness_counts = allocate_total(
+        witness_item_order(tier_map, densities),
+        witness_count if "witness" in families else 0,
+    )
+    uniform_counts = allocate_total(
+        uniform_item_order(tier_map, colours),
+        uniform_count if "uniform" in families else 0,
+    )
     seen_targets: set[str] = set()
     manifest_rows: list[dict[str, Any]] = []
     counts_by_tier: Counter[str] = Counter()
@@ -305,7 +388,12 @@ def generate_dataset(
 
             for family, density in family_parameters:
                 density_key = None if density is None else f"{density:.12g}"
-                for replicate in range(replicates):
+                if family == "witness":
+                    assert density is not None
+                    replicate_count = witness_counts[(n, c, density)]
+                else:
+                    replicate_count = uniform_counts[(n, c)]
+                for replicate in range(replicate_count):
                     for attempt in range(1000):
                         instance_seed = stable_seed(
                             master_seed,
@@ -393,7 +481,8 @@ def generate_dataset(
             "colours": colours,
             "families": families,
             "witness_densities": densities,
-            "replicates_per_configuration": replicates,
+            "requested_witness_instances": witness_count,
+            "requested_uniform_instances": uniform_count,
             "master_seed": master_seed,
             "tier_policy": {
                 "score": "N^2 * (c - 1)",
@@ -458,7 +547,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--densities", type=float, nargs="+", default=[0.10, 0.30, 0.60]
     )
-    parser.add_argument("--replicates", type=int, default=10)
+    parser.add_argument("--witness-count", type=int, default=60)
+    parser.add_argument("--uniform-count", type=int, default=6)
     parser.add_argument("--master-seed", type=int, default=270027)
     return parser.parse_args()
 
@@ -471,7 +561,8 @@ def main() -> None:
         colours=args.colours,
         densities=args.densities,
         families=args.families,
-        replicates=args.replicates,
+        witness_count=args.witness_count,
+        uniform_count=args.uniform_count,
         master_seed=args.master_seed,
     )
     print(f"Generated {summary['counts']['total']} instances in {args.output_dir}")
