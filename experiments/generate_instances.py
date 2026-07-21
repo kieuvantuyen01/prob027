@@ -1,0 +1,443 @@
+#!/usr/bin/env python3
+"""Generate reproducible benchmark instances for CSPLib prob027.
+
+The generator creates two complementary instance families:
+
+* ``witness``: sample a click matrix X, then compute its target.  These
+  instances are feasible by construction, but the witness total is only an
+  upper bound; it is not necessarily the optimum.
+* ``uniform``: sample every target cell uniformly from {0, ..., c-1}.  The
+  feasibility status is intentionally left unknown at generation time.
+
+The output is split into a small ``pilot`` set for debugging/parameter tuning
+and a held-out ``evaluation`` set for the final comparison.  Every instance
+has a seed derived from its full experimental coordinates, so changing loop
+order does not change existing instances.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+from collections import Counter
+from pathlib import Path
+from typing import Any, Iterable
+
+
+SCHEMA_VERSION = "1.0"
+GENERATOR_VERSION = "1.1"
+FAMILIES = ("witness", "uniform")
+
+
+class StableHashRNG:
+    """Small SHA-256 counter-mode RNG with version-independent output."""
+
+    def __init__(self, seed: int):
+        if not 0 <= seed < 2**64:
+            raise ValueError("seed must fit in 64 bits")
+        self._key = seed.to_bytes(8, "big")
+        self._counter = 0
+
+    def _next_u64(self) -> int:
+        payload = b"AlienTiles-RNG-v1" + self._key + self._counter.to_bytes(8, "big")
+        self._counter += 1
+        return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+
+    def randbelow(self, upper: int) -> int:
+        """Return an unbiased integer in range(upper)."""
+        if upper <= 0:
+            raise ValueError("upper must be positive")
+        space = 2**64
+        limit = space - (space % upper)
+        while True:
+            value = self._next_u64()
+            if value < limit:
+                return value % upper
+
+    def randint(self, lower: int, upper: int) -> int:
+        if upper < lower:
+            raise ValueError("upper must not be smaller than lower")
+        return lower + self.randbelow(upper - lower + 1)
+
+    def sample_indices(self, population_size: int, count: int) -> list[int]:
+        """Sample distinct indices with a deterministic partial shuffle."""
+        if not 0 <= count <= population_size:
+            raise ValueError("invalid sample size")
+        pool = list(range(population_size))
+        for index in range(count):
+            selected = index + self.randbelow(population_size - index)
+            pool[index], pool[selected] = pool[selected], pool[index]
+        return pool[:count]
+
+
+def validate_matrix(matrix: list[list[int]], n: int, c: int, label: str) -> None:
+    """Raise ValueError unless matrix is n-by-n with entries in [0, c-1]."""
+    if len(matrix) != n:
+        raise ValueError(f"{label}: expected {n} rows, got {len(matrix)}")
+    for row_index, row in enumerate(matrix):
+        if len(row) != n:
+            raise ValueError(
+                f"{label}: row {row_index} has {len(row)} values; expected {n}"
+            )
+        for value in row:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(f"{label}: values must be integers")
+            if not 0 <= value < c:
+                raise ValueError(f"{label}: value {value} is outside [0, {c - 1}]")
+
+
+def target_from_clicks(clicks: list[list[int]], c: int) -> list[list[int]]:
+    """Return the Alien Tiles target produced by a click matrix."""
+    if c < 2:
+        raise ValueError("c must be at least 2")
+    n = len(clicks)
+    if n < 1:
+        raise ValueError("click matrix must be non-empty")
+    validate_matrix(clicks, n, c, "clicks")
+
+    row_sums = [sum(row) for row in clicks]
+    column_sums = [sum(clicks[i][j] for i in range(n)) for j in range(n)]
+    return [
+        [
+            (row_sums[i] + column_sums[j] - clicks[i][j]) % c
+            for j in range(n)
+        ]
+        for i in range(n)
+    ]
+
+
+def stable_seed(master_seed: int, *coordinates: object) -> int:
+    """Derive a stable 64-bit seed from the experimental coordinates."""
+    payload = json.dumps(
+        [master_seed, *coordinates], ensure_ascii=True, separators=(",", ":")
+    ).encode("ascii")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+
+
+def target_sha256(n: int, c: int, target: list[list[int]]) -> str:
+    """Hash the mathematical instance, independent of descriptive metadata."""
+    payload = json.dumps(
+        {"N": n, "c": c, "target": target},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def sample_witness(n: int, c: int, density: float, rng: StableHashRNG) -> list[list[int]]:
+    """Sample a click matrix with a controlled fraction of nonzero cells."""
+    if not 0.0 < density <= 1.0:
+        raise ValueError("witness density must be in (0, 1]")
+    nonzero_count = max(1, min(n * n, round(density * n * n)))
+    positions = rng.sample_indices(n * n, nonzero_count)
+    clicks = [[0 for _ in range(n)] for _ in range(n)]
+    for position in positions:
+        i, j = divmod(position, n)
+        clicks[i][j] = rng.randint(1, c - 1)
+    return clicks
+
+
+def sample_uniform_target(n: int, c: int, rng: StableHashRNG) -> list[list[int]]:
+    """Sample a target uniformly from {0, ..., c-1}^{n*n}."""
+    return [[rng.randbelow(c) for _ in range(n)] for _ in range(n)]
+
+
+def target_statistics(target: list[list[int]], c: int) -> dict[str, Any]:
+    values = [value for row in target for value in row]
+    histogram = Counter(values)
+    nonzero = sum(value != 0 for value in values)
+    return {
+        "nonzero_cells": nonzero,
+        "nonzero_fraction": nonzero / len(values),
+        "histogram": {str(value): histogram.get(value, 0) for value in range(c)},
+    }
+
+
+def density_token(density: float) -> str:
+    return f"d{round(density * 1000):03d}"
+
+
+def build_instance(
+    *,
+    n: int,
+    c: int,
+    family: str,
+    density: float | None,
+    split: str,
+    replicate: int,
+    master_seed: int,
+    instance_seed: int,
+    duplicate_attempt: int,
+    target: list[list[int]],
+    clicks: list[list[int]] | None,
+) -> dict[str, Any]:
+    family_token = "witness_" + density_token(density) if density is not None else family
+    name = f"{split}_n{n:02d}_c{c:02d}_{family_token}_r{replicate:03d}"
+    digest = target_sha256(n, c, target)
+    parameters: dict[str, Any] = {}
+    if density is not None:
+        parameters["requested_nonzero_click_fraction"] = density
+
+    instance: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "name": name,
+        "description": (
+            "Feasible target derived from a sampled click witness"
+            if family == "witness"
+            else "Uniformly sampled target with feasibility unclassified"
+        ),
+        "N": n,
+        "c": c,
+        "target": target,
+        "generation": {
+            "generator": "experiments/generate_instances.py",
+            "generator_version": GENERATOR_VERSION,
+            "method": family,
+            "split": split,
+            "replicate": replicate,
+            "master_seed": master_seed,
+            "instance_seed": instance_seed,
+            "duplicate_attempt": duplicate_attempt,
+            "parameters": parameters,
+            "target_sha256": digest,
+        },
+        "target_statistics": target_statistics(target, c),
+        "guaranteed_solvable": family == "witness",
+        "status_at_generation": (
+            "feasible_by_construction" if family == "witness" else "unclassified"
+        ),
+    }
+
+    if clicks is not None:
+        witness_total = sum(sum(row) for row in clicks)
+        instance.update(
+            {
+                "witness_clicks": clicks,
+                "witness_total_clicks": witness_total,
+                "known_upper_bound": witness_total,
+            }
+        )
+    return instance
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def generate_dataset(
+    output_dir: Path,
+    *,
+    sizes: Iterable[int],
+    colours: Iterable[int],
+    densities: Iterable[float],
+    families: Iterable[str],
+    pilot_count: int,
+    evaluation_count: int,
+    master_seed: int,
+) -> dict[str, Any]:
+    """Generate a complete benchmark directory and return its summary."""
+    sizes = list(sizes)
+    colours = list(colours)
+    densities = list(densities)
+    families = list(families)
+
+    if output_dir.exists():
+        raise FileExistsError(
+            f"output directory already exists: {output_dir}; choose a new directory"
+        )
+    if not sizes or any(n < 1 for n in sizes):
+        raise ValueError("sizes must contain positive integers")
+    if not colours or any(c < 2 for c in colours):
+        raise ValueError("colours must contain integers >= 2")
+    if not densities or any(not 0.0 < d <= 1.0 for d in densities):
+        raise ValueError("densities must be in (0, 1]")
+    if not families or any(family not in FAMILIES for family in families):
+        raise ValueError(f"families must be selected from {FAMILIES}")
+    if pilot_count < 0 or evaluation_count < 0:
+        raise ValueError("split counts must be non-negative")
+    if pilot_count + evaluation_count == 0:
+        raise ValueError("at least one instance per configuration is required")
+
+    output_dir.mkdir(parents=True)
+    seen_targets: set[str] = set()
+    manifest_rows: list[dict[str, Any]] = []
+    counts_by_split: Counter[str] = Counter()
+    counts_by_family: Counter[str] = Counter()
+
+    splits = (("pilot", pilot_count), ("evaluation", evaluation_count))
+    for split, count in splits:
+        for n in sizes:
+            for c in colours:
+                family_parameters: list[tuple[str, float | None]] = []
+                if "witness" in families:
+                    family_parameters.extend(("witness", density) for density in densities)
+                if "uniform" in families:
+                    family_parameters.append(("uniform", None))
+
+                for family, density in family_parameters:
+                    density_key = None if density is None else f"{density:.12g}"
+                    for replicate in range(count):
+                        for attempt in range(1000):
+                            instance_seed = stable_seed(
+                                master_seed,
+                                split,
+                                n,
+                                c,
+                                family,
+                                density_key,
+                                replicate,
+                                attempt,
+                            )
+                            rng = StableHashRNG(instance_seed)
+                            if family == "witness":
+                                assert density is not None
+                                clicks = sample_witness(n, c, density, rng)
+                                target = target_from_clicks(clicks, c)
+                            else:
+                                clicks = None
+                                target = sample_uniform_target(n, c, rng)
+
+                            digest = target_sha256(n, c, target)
+                            if digest not in seen_targets:
+                                break
+                        else:
+                            raise RuntimeError(
+                                f"could not generate a unique target for N={n}, c={c}, "
+                                f"family={family}; reduce the requested dataset size"
+                            )
+
+                        seen_targets.add(digest)
+                        instance = build_instance(
+                            n=n,
+                            c=c,
+                            family=family,
+                            density=density,
+                            split=split,
+                            replicate=replicate,
+                            master_seed=master_seed,
+                            instance_seed=instance_seed,
+                            duplicate_attempt=attempt,
+                            target=target,
+                            clicks=clicks,
+                        )
+                        relative_path = Path(split) / family / f"n{n:02d}_c{c:02d}" / (
+                            instance["name"] + ".json"
+                        )
+                        write_json(output_dir / relative_path, instance)
+
+                        manifest_rows.append(
+                            {
+                                "name": instance["name"],
+                                "path": relative_path.as_posix(),
+                                "split": split,
+                                "family": family,
+                                "N": n,
+                                "c": c,
+                                "click_density": "" if density is None else density,
+                                "replicate": replicate,
+                                "instance_seed": instance_seed,
+                                "target_sha256": digest,
+                                "guaranteed_solvable": family == "witness",
+                                "witness_total_clicks": (
+                                    "" if clicks is None else instance["witness_total_clicks"]
+                                ),
+                                "known_upper_bound": (
+                                    "" if clicks is None else instance["known_upper_bound"]
+                                ),
+                            }
+                        )
+                        counts_by_split[split] += 1
+                        counts_by_family[family] += 1
+
+    fieldnames = list(manifest_rows[0].keys())
+    with (output_dir / "manifest.csv").open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(manifest_rows)
+
+    summary = {
+        "schema_version": SCHEMA_VERSION,
+        "generator_version": GENERATOR_VERSION,
+        "config": {
+            "sizes": sizes,
+            "colours": colours,
+            "families": families,
+            "witness_densities": densities,
+            "pilot_count_per_configuration": pilot_count,
+            "evaluation_count_per_configuration": evaluation_count,
+            "master_seed": master_seed,
+        },
+        "counts": {
+            "total": len(manifest_rows),
+            "by_split": dict(sorted(counts_by_split.items())),
+            "by_family": dict(sorted(counts_by_family.items())),
+        },
+        "labelling_policy": {
+            "witness_total_is": "known_upper_bound_only",
+            "known_optimum_is_written_only_after_exact_proof": True,
+            "uniform_target_status_at_generation": "unclassified",
+        },
+    }
+    write_json(output_dir / "dataset_summary.json", summary)
+
+    readme = f"""# Alien Tiles generated benchmark
+
+This directory was generated deterministically by
+`experiments/generate_instances.py` with master seed `{master_seed}`.
+
+- Total instances: {len(manifest_rows)}
+- Pilot instances: {counts_by_split['pilot']}
+- Evaluation instances: {counts_by_split['evaluation']}
+- Witness-derived instances: {counts_by_family['witness']}
+- Uniform-target instances: {counts_by_family['uniform']}
+
+`manifest.csv` is the experiment index.  A witness proves feasibility and
+provides only an upper bound; it does not prove optimality.
+"""
+    (output_dir / "README.md").write_text(readme, encoding="utf-8")
+    return summary
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate a reproducible Alien Tiles benchmark suite"
+    )
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--sizes", type=int, nargs="+", default=[4, 5, 6, 8, 10, 12])
+    parser.add_argument("--colours", type=int, nargs="+", default=[2, 3, 4])
+    parser.add_argument(
+        "--families", choices=FAMILIES, nargs="+", default=list(FAMILIES)
+    )
+    parser.add_argument(
+        "--densities", type=float, nargs="+", default=[0.10, 0.30, 0.60]
+    )
+    parser.add_argument("--pilot-count", type=int, default=2)
+    parser.add_argument("--evaluation-count", type=int, default=8)
+    parser.add_argument("--master-seed", type=int, default=270027)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    summary = generate_dataset(
+        args.output_dir,
+        sizes=args.sizes,
+        colours=args.colours,
+        densities=args.densities,
+        families=args.families,
+        pilot_count=args.pilot_count,
+        evaluation_count=args.evaluation_count,
+        master_seed=args.master_seed,
+    )
+    print(f"Generated {summary['counts']['total']} instances in {args.output_dir}")
+    print(json.dumps(summary["counts"], indent=2))
+
+
+if __name__ == "__main__":
+    main()

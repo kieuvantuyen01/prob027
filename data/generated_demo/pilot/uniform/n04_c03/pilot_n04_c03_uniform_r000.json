@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "name": "pilot_n04_c03_uniform_r000",
+  "description": "Uniformly sampled target with feasibility unclassified",
+  "N": 4,
+  "c": 3,
+  "target": [
+    [
+      2,
+      1,
+      0,
+      0
+    ],
+    [
+      1,
+      2,
+      2,
+      0
+    ],
+    [
+      0,
+      1,
+      1,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "generation": {
+    "generator": "experiments/generate_instances.py",
+    "generator_version": "1.1",
+    "method": "uniform",
+    "split": "pilot",
+    "replicate": 0,
+    "master_seed": 270027,
+    "instance_seed": 5319079097021464635,
+    "duplicate_attempt": 0,
+    "parameters": {},
+    "target_sha256": "ae557f02b6b7d11fbcce7ceb166e7c2294e18be0c4520b55d452fcd66b49bf63"
+  },
+  "target_statistics": {
+    "nonzero_cells": 8,
+    "nonzero_fraction": 0.5,
+    "histogram": {
+      "0": 8,
+      "1": 5,
+      "2": 3
+    }
+  },
+  "guaranteed_solvable": false,
+  "status_at_generation": "unclassified"
+}

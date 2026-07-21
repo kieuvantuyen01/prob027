@@ -283,12 +283,18 @@ def load_instance(filepath: str) -> dict:
 
 
 def load_instances_from_dir(dirpath: str) -> list[dict]:
-    """Load all .json instance files from a directory."""
-    files = sorted(glob.glob(os.path.join(dirpath, "*.json")))
-    if not files:
+    """Load instance JSON files recursively, ignoring dataset metadata."""
+    files = sorted(glob.glob(os.path.join(dirpath, "**", "*.json"), recursive=True))
+    instance_files = []
+    for filepath in files:
+        with open(filepath) as f:
+            data = json.load(f)
+        if all(key in data for key in ("N", "c", "target")):
+            instance_files.append(filepath)
+    if not instance_files:
         print(f"No .json files found in {dirpath}")
         sys.exit(1)
-    return [load_instance(f) for f in files]
+    return [load_instance(f) for f in instance_files]
 
 
 def parse_target(s: str, N: int, c: int) -> list[list[int]]:

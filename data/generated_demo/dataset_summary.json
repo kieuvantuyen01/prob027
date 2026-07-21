@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "generator_version": "1.1",
+  "config": {
+    "sizes": [
+      3,
+      4
+    ],
+    "colours": [
+      2,
+      3
+    ],
+    "families": [
+      "witness",
+      "uniform"
+    ],
+    "witness_densities": [
+      0.15,
+      0.4
+    ],
+    "pilot_count_per_configuration": 1,
+    "evaluation_count_per_configuration": 2,
+    "master_seed": 270027
+  },
+  "counts": {
+    "total": 36,
+    "by_split": {
+      "evaluation": 24,
+      "pilot": 12
+    },
+    "by_family": {
+      "uniform": 12,
+      "witness": 24
+    }
+  },
+  "labelling_policy": {
+    "witness_total_is": "known_upper_bound_only",
+    "known_optimum_is_written_only_after_exact_proof": true,
+    "uniform_target_status_at_generation": "unclassified"
+  }
+}
