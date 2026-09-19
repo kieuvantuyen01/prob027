@@ -27,6 +27,7 @@ Usage
 """
 
 import argparse
+import csv
 import glob
 import json
 import os
@@ -163,6 +164,9 @@ class AlienTilesMinSAT:
         # --- First check feasibility (no bound) ----------------------
         t0 = time.perf_counter()
         cnf, encoder = self._build_cnf_with_bound(max_total)
+        # Ghi vars/clauses từ CNF không có cardinality bound (full model)
+        self.stats["vars"] = cnf.nv
+        self.stats["clauses"] = len(cnf.clauses)
         self.stats["time_encode"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
@@ -176,6 +180,7 @@ class AlienTilesMinSAT:
 
         best_solution = self._extract_solution(model_set, encoder)
         best_total = sum(sum(row) for row in best_solution)
+        print(f"  [binary] feasibility SAT → initial upper bound = {best_total}")
 
         # --- Binary search for minimum K ----------------------------
         lo, hi = 0, best_total - 1
@@ -192,13 +197,13 @@ class AlienTilesMinSAT:
                     best_solution = self._extract_solution(model_set, encoder)
                     best_total = sum(sum(row) for row in best_solution)
                     hi = mid - 1
+                    print(f"  [binary] K={mid} → SAT  (best so far = {best_total}, search [{lo},{hi}])")
                 else:
                     lo = mid + 1
+                    print(f"  [binary] K={mid} → UNSAT (search [{lo},{hi}])")
 
         self.stats["time_solve"] = time.perf_counter() - t0_total
         self.stats["optimum"] = best_total
-        self.stats["vars"] = cnf.nv
-        self.stats["clauses"] = len(cnf.clauses)
 
         return best_solution, best_total
 
@@ -207,8 +212,8 @@ class AlienTilesMinSAT:
 #  CLI
 # =====================================================================
 
-def solve_instance(inst: dict):
-    """Solve a single instance and print results."""
+def solve_instance(inst: dict) -> dict:
+    """Solve a single instance, print results, and return a stats dict."""
     N, c, target = inst["N"], inst["c"], inst["target"]
     print("=" * 60)
     print(f"Instance: {inst['name']}")
@@ -218,19 +223,43 @@ def solve_instance(inst: dict):
     solver = AlienTilesMinSAT(N, c, target)
     solution, min_total = solver.solve()
 
-    print(f"\n  SAT calls:   {solver.stats['sat_calls']}")
+    print(f"\n  Variables:   {solver.stats['vars']}")
+    print(f"  Clauses:     {solver.stats['clauses']}")
+    print(f"  SAT calls:   {solver.stats['sat_calls']}")
     print(f"  Total time:  {solver.stats['time_solve']:.4f}s")
 
+    status = "UNSAT"
     if solution is None:
         print("\n  Result: UNSATISFIABLE — no solution exists.")
     else:
         print_matrix("  Optimal X (click matrix)", solution)
         print(f"\n  Minimum total clicks: {min_total}")
-
         ok = verify_solution(N, c, target, solution)
         print(f"  Verification: {'✓ PASSED' if ok else '✗ FAILED'}")
+        status = "OK"
 
     print()
+    return {
+        "instance": inst["name"],
+        "N": N,
+        "c": c,
+        "variables": solver.stats["vars"],
+        "clauses": solver.stats["clauses"],
+        "runtime_s": round(solver.stats["time_solve"], 4),
+        "sat_calls": solver.stats["sat_calls"],
+        "total_clicks": min_total,
+        "optimal_clicks": min_total,
+        "status": status,
+    }
+
+
+CSV_COLUMNS = [
+    "instance", "N", "c",
+    "variables", "clauses",
+    "runtime_s", "sat_calls",
+    "total_clicks", "optimal_clicks",
+    "status",
+]
 
 
 def main():
@@ -246,6 +275,9 @@ def main():
                         help='Target matrix, e.g. "1,0,2;0,1,0;2,0,1"')
     parser.add_argument("--examples", action="store_true",
                         help="Run built-in example instances")
+    parser.add_argument("--csv", type=str, default=None,
+                        metavar="FILE",
+                        help="Ghi kết quả vào file CSV (nối vào nếu đã tồn tại)")
     args = parser.parse_args()
 
     if args.input:
@@ -262,8 +294,26 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # Mở file CSV nếu được yêu cầu
+    csv_fh = None
+    csv_writer = None
+    if args.csv:
+        is_new = not os.path.exists(args.csv)
+        csv_fh = open(args.csv, "a", newline="", encoding="utf-8")
+        csv_writer = csv.DictWriter(csv_fh, fieldnames=CSV_COLUMNS,
+                                    extrasaction="ignore")
+        if is_new:
+            csv_writer.writeheader()
+
     for inst in instances:
-        solve_instance(inst)
+        result = solve_instance(inst)
+        if csv_writer is not None:
+            csv_writer.writerow(result)
+            csv_fh.flush()
+
+    if csv_fh is not None:
+        csv_fh.close()
+        print(f"Kết quả đã ghi vào: {args.csv}")
 
 
 if __name__ == "__main__":

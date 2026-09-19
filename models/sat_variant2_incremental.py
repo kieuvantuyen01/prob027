@@ -30,6 +30,7 @@ Usage
 """
 
 import argparse
+import csv
 import os
 import sys
 import time
@@ -185,8 +186,8 @@ class AlienTilesMinIncrSAT:
 #  CLI
 # =====================================================================
 
-def solve_instance(inst: dict):
-    """Solve a single instance and print results."""
+def solve_instance(inst: dict) -> dict:
+    """Solve a single instance, print results, and return a stats dict."""
     N, c, target = inst["N"], inst["c"], inst["target"]
     print("=" * 60)
     print(f"Instance: {inst['name']}")
@@ -202,16 +203,38 @@ def solve_instance(inst: dict):
     print(f"  SAT calls:   {solver.stats['sat_calls']}  (single solver)")
     print(f"  Solve time:  {solver.stats['time_solve']:.4f}s")
 
+    status = "UNSAT"
     if solution is None:
         print("\n  Result: UNSATISFIABLE — no solution exists.")
     else:
         print_matrix("  Optimal X (click matrix)", solution)
         print(f"\n  Minimum total clicks: {min_total}")
-
         ok = verify_solution(N, c, target, solution)
         print(f"  Verification: {'✓ PASSED' if ok else '✗ FAILED'}")
+        status = "OK"
 
     print()
+    return {
+        "instance": inst["name"],
+        "N": N,
+        "c": c,
+        "variables": solver.stats["vars"],
+        "clauses": solver.stats["clauses"],
+        "runtime_s": round(solver.stats["time_solve"], 4),
+        "sat_calls": solver.stats["sat_calls"],
+        "total_clicks": min_total,
+        "optimal_clicks": min_total,
+        "status": status,
+    }
+
+
+CSV_COLUMNS = [
+    "instance", "N", "c",
+    "variables", "clauses",
+    "runtime_s", "sat_calls",
+    "total_clicks", "optimal_clicks",
+    "status",
+]
 
 
 def main():
@@ -228,6 +251,9 @@ def main():
                         help='Target matrix, e.g. "1,0,2;0,1,0;2,0,1"')
     parser.add_argument("--examples", action="store_true",
                         help="Run built-in example instances")
+    parser.add_argument("--csv", type=str, default=None,
+                        metavar="FILE",
+                        help="Ghi kết quả vào file CSV (nối vào nếu đã tồn tại)")
     args = parser.parse_args()
 
     if args.input:
@@ -244,8 +270,26 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # Mở file CSV nếu được yêu cầu
+    csv_fh = None
+    csv_writer = None
+    if args.csv:
+        is_new = not os.path.exists(args.csv)
+        csv_fh = open(args.csv, "a", newline="", encoding="utf-8")
+        csv_writer = csv.DictWriter(csv_fh, fieldnames=CSV_COLUMNS,
+                                    extrasaction="ignore")
+        if is_new:
+            csv_writer.writeheader()
+
     for inst in instances:
-        solve_instance(inst)
+        result = solve_instance(inst)
+        if csv_writer is not None:
+            csv_writer.writerow(result)
+            csv_fh.flush()
+
+    if csv_fh is not None:
+        csv_fh.close()
+        print(f"Kết quả đã ghi vào: {args.csv}")
 
 
 if __name__ == "__main__":
